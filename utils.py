@@ -1,6 +1,11 @@
 from collections.abc import Iterable
 import torch.nn as nn
 
+def size(shape):
+    size = 1
+    for d in shape:
+        size *= d
+    return size
 
 def set_freeze_by_names(model, layer_names, freeze=True):
     if not isinstance(layer_names, Iterable):

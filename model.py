@@ -61,7 +61,7 @@ class LinearGeneral(nn.Module):
         self.weight = nn.Parameter(torch.randn(*in_dim, *feat_dim))
         self.bias = nn.Parameter(torch.zeros(*feat_dim))
 
-    def forward(self, x, dims):
+    def forward(self, x, dims=([2], [0])):
         a = torch.tensordot(x, self.weight, dims=dims) + self.bias
         return a
 
