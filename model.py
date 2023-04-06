@@ -227,3 +227,8 @@ class CAFIA_Transformer(nn.Module):
         feat = self.vit(batch_X)
         output = self.classifier(feat[:, 0])
         return output
+
+
+        layer = LinearGeneral(in_dim=(in_dim, ), feat_dim=(feat_dim, ))
+        x = torch.randn(b, n, in_dim)
+        y = layer(x, dims=([2], [0]))

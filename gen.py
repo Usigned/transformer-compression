@@ -5,7 +5,7 @@ from timeIt import timeit
 import random
 import json
 from tqdm import tqdm
-from utils import size
+import numpy as np
 
 hyper_param_range = {
     nn.Linear: {
@@ -93,7 +93,7 @@ def gen_dataset(layer_type, size=200):
         hyparam, x = random_generate_param_with_x(layer_type)
         data[f"{i}"] = {
             "hyparam": hyparam,
-            "in_dim": x
+            "x_shape": x
         }
     return data
 
@@ -103,18 +103,73 @@ def eval_dataset(path, layer_type):
     label = {}
     for idx in tqdm(data, desc="Eval exection time"):
         hparam = data[idx]['hyparam']
-        in_dim = data[idx]['in_dim']
+        in_dim = data[idx]['x_shape']
         layer, x = create_layer_from_param(
             layer_type, hyper_params=hparam, in_dim=in_dim)
         label[idx] = timeit(layer, x)
     return label
 
 
-def get_read_write_ops(layer_type, hyparam, in_dim):
+def compute_memory_flops(layer_type, hyparam, in_dim):
     if layer_type is LinearGeneral:
         b, n, in_dim = in_dim
-        return read, write, ops
-    
+        feat_dim = hyparam['feat_dim']
+        x_shape = (b, n, in_dim)
+
+        x_read = np.prod(x_shape)
+        weight_read = in_dim * np.prod(feat_dim)
+        bias_read = np.prod(feat_dim)
+
+        total_memory_read = x_read + weight_read + bias_read
+
+        # Memory writes
+        y_shape = (b, n, *feat_dim)
+        total_memory_write = np.prod(y_shape)
+
+        # FLOPs
+        dot_product_flops = b * n * np.prod(feat_dim) * in_dim * 2
+        addition_flops = np.prod(y_shape)
+        total_flops = dot_product_flops + addition_flops
+
+        return total_memory_read, total_memory_write, total_flops
+
+    if layer_type is SelfAttention:
+        b, n, in_dim = in_dim
+        h = hyparam['heads']
+        h_dim = in_dim // h
+        read, write, flops = 0, 0, 0
+        
+        # x -> q, k, v 
+        q_read, q_write, q_flops = compute_memory_flops(LinearGeneral, {
+            'in_dim': (in_dim, ),
+            'feat_dim': (h, h_dim),
+        }, (b, n, in_dim))
+        q_shape = (b, h, n, h_dim)
+
+        read += q_read * 3
+        write += q_write * 3
+        flops += q_flops * 3
+        
+        # q, k -> s
+        read += np.prod(q_shape) * 2 # read q, k
+        flops += b*h*n*n*h_dim*2 # q matmul k
+        write += b*h*n*n
+
+        # s * v -> z
+        z_shape = (b, h, n, h_dim)
+        read += np.prod(q_shape) + b*h*n*n
+        flops += 2*b*h*n^2*h_dim # s matmul v
+        write += np.prod(z_shape)
+        out_shape = (b, h, in_dim) # in_dim = h * h_dim
+
+        # w_o(z) -> out
+        out_read, out_write, out_flops = compute_memory_flops(LinearGeneral,
+        {'in_dim': (in_dim, ), 'feat_dim': (h, h_dim)}, (b, n, h_dim))
+        read += out_read
+        flops += out_flops
+        write += out_write
+        return read, write, flops
+
     if layer_type is nn.Linear:
         b, in_dim = in_dim
         out_dim = hyparam['out_features']
@@ -123,9 +178,54 @@ def get_read_write_ops(layer_type, hyparam, in_dim):
         ops = b * out_dim * 2 * in_dim
         return read, write, ops
 
-    if layer_type is SelfAttention:
-        heads = hyparam['heads']
-        head_dim = hyparam['in_dim'] // heads
+    if layer_type is MlpBlock:
+        b, in_dim = in_dim
+        mlp_dim = hyparam['mlp_dim']
+        out_dim = hyparam['out_dim']
+        read, write, flops = 0, 0, 0
+
+        # x -> fc1(x)
+        fc1_r, fc1_w, fc1_flops = compute_memory_flops(nn.Linear, {
+            'in_features': in_dim,
+            'out_features': mlp_dim,
+        }, (b, in_dim))
+        read += fc1_r
+        write += fc1_w
+        flops += fc1_flops
+
+        # x -> fc2(x)
+        fc1_r, fc1_w, fc1_flops = compute_memory_flops(nn.Linear, {
+            'in_features': mlp_dim,
+            'out_features': out_dim,
+        }, (b, in_dim))
+        read += fc1_r
+        write += fc1_w
+        flops += fc1_flops
+        return read, write, flops
+    
+    if layer_type is EncoderBlock:
+        b, n, in_dim = in_dim
+        mlp_dim = hyparam['mlp_dim']
+        h = hyparam['num_heads']
+        r, w, fp = 0, 0, 0
+
+        # x -> x + msa(x)
+        msa_r, msa_w, msa_fp = compute_memory_flops(SelfAttention, {
+            'in_dim': in_dim, "heads": h
+        }, (b, n, in_dim))
+        r += msa_r
+        w += msa_w
+        fp += msa_fp
+
+        # x -> x + ffn(x)
+        ffn_r, ffn_w, ffn_fp = compute_memory_flops(MlpBlock, {
+            'in_dim': in_dim, 'mlp_dim': mlp_dim, "out_dim": in_dim
+        })
+        r += ffn_r
+        w += ffn_w
+        fp += ffn_fp
+        return r, w, fp
+
 
 if __name__ == '__main__':
     # __test_layer()
@@ -133,13 +233,4 @@ if __name__ == '__main__':
     # json.dump(data, open("lg-data.json", 'w'), indent=4)
     # result = eval_dataset("lg-data.json", LinearGeneral)
     # json.dump(result, open("lg-label.json", 'w'), indent=4)
-    d = {"hyparam": {
-            "in_features": 500,
-            "out_features": 500
-        },
-        "in_dim": [
-            1,
-            219
-        ]}
-    get_read_write_ops(nn.Linear, **d)
-    # LinearGeneral()(torch.randn(1, 197, 768))
+    pass
