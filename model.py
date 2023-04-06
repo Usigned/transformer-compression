@@ -217,7 +217,7 @@ class CAFIA_Transformer(nn.Module):
         self.classifier = nn.Linear(args.emb_dim, args.num_classes)
 
     def init_weight(self, args):
-        if args.vit_model is not None:
+        if hasattr(args, "vit_model") and args.vit_model is not None:
             state_dict = torch.load(args.vit_model)['state_dict']
             del state_dict['classifier.weight']
             del state_dict['classifier.bias']

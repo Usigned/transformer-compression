@@ -256,8 +256,8 @@ if __name__ == '__main__':
     data = gen_dataset(LinearGeneral)
     json.dump(data, open("lg-data.json", 'w'), indent=4)
     
-    pred = pred_dataset(data, LinearGeneral, 1000, 10, 10)
-    json.dump(pred, open("lg-pred.json", 'w'), indent=4)
+    # pred = pred_dataset(data, LinearGeneral, 1000, 10, 10)
+    # json.dump(pred, open("lg-pred.json", 'w'), indent=4)
     
     result = eval_dataset(data, LinearGeneral)
     json.dump(result, open("lg-label.json", 'w'), indent=4)
