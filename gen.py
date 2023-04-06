@@ -97,9 +97,11 @@ def gen_dataset(layer_type, size=200):
         }
     return data
 
+def eval_path(path, *args):
+    return eval_dataset(json.load(open(path, 'r')), *args)
 
-def eval_dataset(path, layer_type):
-    data = json.load(open(path, 'r'))
+
+def eval_dataset(data, layer_type):
     label = {}
     for idx in tqdm(data, desc="Eval exection time"):
         hparam = data[idx]['hyparam']
@@ -110,9 +112,9 @@ def eval_dataset(path, layer_type):
     return label
 
 
-def compute_memory_flops(layer_type, hyparam, in_dim):
+def compute_memory_flops(layer_type, hyparam, x_shape):
     if layer_type is LinearGeneral:
-        b, n, in_dim = in_dim
+        b, n, in_dim = x_shape
         feat_dim = hyparam['feat_dim']
         x_shape = (b, n, in_dim)
 
@@ -134,12 +136,12 @@ def compute_memory_flops(layer_type, hyparam, in_dim):
         return total_memory_read, total_memory_write, total_flops
 
     if layer_type is SelfAttention:
-        b, n, in_dim = in_dim
+        b, n, in_dim = x_shape
         h = hyparam['heads']
         h_dim = in_dim // h
         read, write, flops = 0, 0, 0
-        
-        # x -> q, k, v 
+
+        # x -> q, k, v
         q_read, q_write, q_flops = compute_memory_flops(LinearGeneral, {
             'in_dim': (in_dim, ),
             'feat_dim': (h, h_dim),
@@ -149,37 +151,37 @@ def compute_memory_flops(layer_type, hyparam, in_dim):
         read += q_read * 3
         write += q_write * 3
         flops += q_flops * 3
-        
+
         # q, k -> s
-        read += np.prod(q_shape) * 2 # read q, k
-        flops += b*h*n*n*h_dim*2 # q matmul k
+        read += np.prod(q_shape) * 2  # read q, k
+        flops += b*h*n*n*h_dim*2  # q matmul k
         write += b*h*n*n
 
         # s * v -> z
         z_shape = (b, h, n, h_dim)
         read += np.prod(q_shape) + b*h*n*n
-        flops += 2*b*h*n^2*h_dim # s matmul v
+        flops += 2*b*h*n ^ 2*h_dim  # s matmul v
         write += np.prod(z_shape)
-        out_shape = (b, h, in_dim) # in_dim = h * h_dim
+        out_shape = (b, h, in_dim)  # in_dim = h * h_dim
 
         # w_o(z) -> out
         out_read, out_write, out_flops = compute_memory_flops(LinearGeneral,
-        {'in_dim': (in_dim, ), 'feat_dim': (h, h_dim)}, (b, n, h_dim))
+                                                              {'in_dim': (in_dim, ), 'feat_dim': (h, h_dim)}, (b, n, h_dim))
         read += out_read
         flops += out_flops
         write += out_write
         return read, write, flops
 
     if layer_type is nn.Linear:
-        b, in_dim = in_dim
+        b, in_dim = x_shape
         out_dim = hyparam['out_features']
-        read = b * in_dim + in_dim * out_dim + out_dim + 2 * b *out_dim
+        read = b * in_dim + in_dim * out_dim + out_dim + 2 * b * out_dim
         write = 2 * b * out_dim
         ops = b * out_dim * 2 * in_dim
         return read, write, ops
 
     if layer_type is MlpBlock:
-        b, in_dim = in_dim
+        b, in_dim = x_shape
         mlp_dim = hyparam['mlp_dim']
         out_dim = hyparam['out_dim']
         read, write, flops = 0, 0, 0
@@ -202,9 +204,9 @@ def compute_memory_flops(layer_type, hyparam, in_dim):
         write += fc1_w
         flops += fc1_flops
         return read, write, flops
-    
+
     if layer_type is EncoderBlock:
-        b, n, in_dim = in_dim
+        b, n, in_dim = x_shape
         mlp_dim = hyparam['mlp_dim']
         h = hyparam['num_heads']
         r, w, fp = 0, 0, 0
@@ -227,10 +229,35 @@ def compute_memory_flops(layer_type, hyparam, in_dim):
         return r, w, fp
 
 
+def estimate_exec_time(layer_type, param, speed, read_bdw, write_bdw, prec=32):
+    '''
+    speed #flop/s
+    bdw xGB/s
+    prec: int
+    '''
+    read, write, flops = compute_memory_flops(layer_type, **param)
+    t_r = read * prec / read_bdw * 8e9
+    t_w = write * prec / write_bdw * 8e9
+    t_c = flops / speed 
+    return t_r + t_w + t_c
+
+
+def pred_path(path, *args):
+    return pred_dataset(json.load(open(path, 'r')), *args)
+
+def pred_dataset(data, layer_type, speed, read_bdw, write_bdw):
+    pred = {}
+    for idx in tqdm(data, desc="Estimate exection time"):
+        pred[idx] = estimate_exec_time(layer_type, data[idx], speed, read_bdw, write_bdw)
+    return pred
+
 if __name__ == '__main__':
     # __test_layer()
-    # data = gen_dataset(LinearGeneral)
-    # json.dump(data, open("lg-data.json", 'w'), indent=4)
-    # result = eval_dataset("lg-data.json", LinearGeneral)
-    # json.dump(result, open("lg-label.json", 'w'), indent=4)
-    pass
+    data = gen_dataset(LinearGeneral)
+    json.dump(data, open("lg-data.json", 'w'), indent=4)
+    
+    pred = pred_dataset(data, LinearGeneral, 1000, 10, 10)
+    json.dump(pred, open("lg-pred.json", 'w'), indent=4)
+    
+    result = eval_dataset(data, LinearGeneral)
+    json.dump(result, open("lg-label.json", 'w'), indent=4)
