@@ -1,52 +1,181 @@
-from model import EncoderBlock, CAFIA_Transformer, SelfAttention, LinearGeneral, EncoderBlock
-from torch.profiler import profile, record_function, ProfilerActivity
-from argparse import Namespace
-import json
+from typing import Type
 import torch
-from torch.autograd.profiler_util import FunctionEvent
+from torch.autograd.profiler_util import FunctionEvent, EventList
+import numpy as np
+import torch.nn as nn
+from tqdm import tqdm
+from gen import gen_dataset
+import json
+import matplotlib.pyplot as plt
 
-torch.set_num_threads(1)
+GiGa = 1024 * 1024 * 1024
 
-pwd = '/Users/qing/Documents/design-code/ViT-B_16-224.json'
-args = Namespace(**json.load(open(pwd, 'r')))
-args.attn_type = SelfAttention
+def self_flops(evt: FunctionEvent):
+    flops = evt.flops
+    for child in evt.cpu_children:
+        child_flops = self_flops(child)
+        if child_flops:
+            flops += child_flops
+    return flops
 
-# model = CAFIA_Transformer(args)
-# inputs = torch.randn(1, 3, 224, 224)
+class Profiler:
+    def __init__(self, layer_type, hparams, x_shape, num_threads=1, **kwargs) -> None:
+        self.num_threads = num_threads
+        torch.set_num_threads(num_threads)
 
-# model = LinearGeneral((162,), (3, 54))
-# inputs = torch.randn(1, 192, 162)
-# print(1*192*162+162*3*54+192*3*54)
-model = SelfAttention(768, heads=12)
-# model = EncoderBlock(768, 3072, 12).eval()
-inputs = torch.randn(1, 197, 768)
+        self.kwargs = kwargs
+        self.layer_type = layer_type
+        self.hparams = hparams
+        self.x_shape = x_shape
+        self.events: EventList = self.__profile()
 
-# with profile(activities=[ProfilerActivity.CPU], with_flops=True, profile_memory=True) as prof:
-#     model(inputs)
+    def __profile(self):
+        layer = self.layer_type(**self.hparams).eval()
+        x  = torch.randn(*self.x_shape)
 
-# print(prof.key_averages().table(sort_by="self_cpu_time_total", row_limit=100))
+        with torch.autograd.profiler.profile(with_flops=True, profile_memory=True, record_shapes=True) as prof:
+            layer(x, **self.kwargs)
+        return prof.function_events
 
-# inputs = torch.randn(1, 192, 162)
-
-with torch.autograd.profiler.profile(profile_memory=True, with_flops=True) as prof:
-    model(inputs)
-
-for evt in prof.function_events:
-    evt:FunctionEvent
-    if evt.cpu_parent is None and evt.cpu_memory_usage != 0:
-        print(
-        f'''{evt.id}, {evt.name}, {evt.cpu_memory_usage}, {evt.cpu_time_total_str}, {evt.input_shapes}, {evt.self_flops}
+    @property
+    def cpu_time_total(self):
         '''
-        )
+        in ms \n
+        1 s = 1e3 ms = 1e6 us
+        '''
+        return sum([evt.cpu_time_total for evt in self.events]) / 1e3
 
-# num_threads = torch.get_num_threads()
-# print(f'Benchmarking on {num_threads} threads')
+    @property
+    def max_memory_usage(self):
+        '''
+        KB = 1024B
+        '''
+        max_mem = 0
+        cur_mem = 0
+        for evt in self.events:
+            evt: FunctionEvent
+            if evt.cpu_parent is None and evt.cpu_memory_usage != 0:  # filter non-top-level op
+                cur_mem += evt.cpu_memory_usage
+                max_mem = max(max_mem, cur_mem)
+        return max_mem // 1024
 
-# import torch.utils.benchmark as benchmark
+    def get_read_write_kflops_per_op(self):
+        '''
+        read/write: KByte
+        flops: FLOPS
+        '''
+        self.events: list[FunctionEvent]
+        op_dict = {}
+        for evt in self.events:
+            evt: FunctionEvent
+            if evt.cpu_parent is None:  # filter non-top-level op
+                op_dict[(evt.id, evt.name)] = {
+                    'read': int(sum([np.prod(s) for s in evt.input_shapes])),
+                    'write': evt.self_cpu_memory_usage,
+                    'flops': self_flops(evt)
+                }
+        return op_dict
 
-# t = benchmark.Timer(
-#     stmt='model(inputs)',
-#     globals={'inputs': inputs, 'model': model}
-# )
+    @staticmethod
+    def get_top_level_evts(events: EventList):
+        evtlst = EventList()
+        for evt in events:
+            evt: FunctionEvent
+            if evt.cpu_parent is None:  # filter non-top-level op
+                evtlst.append(evt)
+        return evtlst
 
-# print(t.timeit(100).mean*1000)
+    @property
+    def total_flops(self):
+        flops = 0
+        for evt in self.events:
+            if evt.cpu_parent is None:
+                evt_flops = self_flops(evt)
+                if evt_flops:
+                    flops += evt_flops
+        return flops
+
+    @property
+    def total_read(self):
+        return int(sum(
+            sum(np.prod(s) for s in evt.input_shapes) for evt in self.events if evt.cpu_parent is None)) // 1024
+
+    @property
+    def total_write(self):
+        return sum(evt.cpu_memory_usage for evt in self.events if evt.cpu_parent is None and evt.cpu_memory_usage > 0) // 1024
+
+    def __repr__(self):
+        s = "Name".ljust(20)+"CPU Time".ljust(15) + \
+            "CPU mem".ljust(15)+"Input Shapes"
+        for evt in Profiler.get_top_level_evts(self.events):
+            evt: FunctionEvent
+            s += f"\n{evt.name}".ljust(20)+f"{evt.cpu_time_total_str}".ljust(
+                15)+f"{evt.cpu_memory_usage//1024}KB".ljust(15)+f"{evt.input_shapes}"
+        return s
+
+    def print_meta(self):
+        print(f"cpu time: {self.cpu_time_total}ms\nmax mem usage: {self.max_memory_usage}KB\ntotal mem read: {self.total_read}KB\ntotal mem write: {self.total_write}KB\ntotal flops: {self.total_flops}")
+
+
+def profile(layer_type, data, num_threads=1):
+    label = {}
+    for idx in tqdm(data, desc="profile"):
+        hparam = data[idx]['hparams']
+        in_dim = data[idx]['x_shape']
+        kwargs = {'dims': ([2], [0])} if layer_type is LinearGeneral else {}
+        prof = Profiler(layer_type, hparam, in_dim, num_threads=num_threads, **kwargs)
+        label[idx] = {'time': prof.cpu_time_total, 'mem': prof.max_memory_usage, 'read': prof.total_read, 'write':prof.total_write, 'flops':prof.total_flops}
+    return label
+
+def fit_and_plt(label, fname, need_plt=True):
+
+    y, x = [], []
+    for v in label.values():
+        y.append(v['time'])
+        x.append([v['read'], v['write'], v['flops']])
+
+    # 假设我们有以下的数据点
+    X = np.array(x)
+    y_data = np.array(y)
+
+    # 使用线性代数方法进行多元线性拟合
+    X = np.hstack((X, np.ones((X.shape[0], 1))))  # 添加常数列到 x 数据中
+    coefficients = np.linalg.lstsq(X, y_data, rcond=None)[0]  # 最小二乘法拟合
+
+    if need_plt:
+        indices = np.argsort(y_data)
+        X_sorted = X[indices]
+        y_sorted = y_data[indices]
+
+        # 计算拟合曲线的值
+        # X_sorted = np.hstack((X_sorted, np.ones((X_sorted.shape[0], 1))))  # 添加常数列到排序后的 x 数据中
+        y_fit = X_sorted.dot(coefficients)
+
+        # 绘制数据点和拟合曲线
+        plt.title(f"{fname}")
+        plt.scatter(range(len(y_sorted)), y_sorted, label="Data")
+        plt.plot(range(len(y_fit)), y_fit, label="Fit")
+        plt.legend()
+        plt.savefig(f"{fname}.png", format='png')
+        plt.show()
+    return coefficients
+
+def profile_and_plt(layer_type):
+    data = gen_dataset(layer_type)
+    label = profile(layer_type, data)
+
+    fname = str(t).split('\'')[1].split('.')[-1]
+
+    json.dump(data, open(f"{fname}-data.json", 'w'), indent=4)
+    json.dump(label, open(f"{fname}-label.json", 'w'), indent=4)
+    coeff = fit_and_plt(label, fname)
+
+
+
+if __name__ == '__main__':
+    from model import LinearGeneral, SelfAttention, EncoderBlock, MlpBlock
+
+    types = [MlpBlock]
+
+    for t in types:
+        profile_and_plt(t)

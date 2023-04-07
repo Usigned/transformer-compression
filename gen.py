@@ -1,7 +1,7 @@
+from typing import Type
 import torch
 import torch.nn as nn
 from model import LinearGeneral, MlpBlock, SelfAttention, EncoderBlock
-from timeIt import timeit
 import random
 import json
 from tqdm import tqdm
@@ -37,7 +37,7 @@ def is_seq_input(layer_type):
     return layer_type in [SelfAttention, EncoderBlock, LinearGeneral]
 
 
-def random_generate_param_with_x(layer_type, seq_range=(175, 200), batch_size=1):
+def random_generate_hparams_and_x_shape(layer_type, seq_range=(175, 200), batch_size=1):
     if layer_type not in hyper_param_range:
         raise NotImplementedError(f"{layer_type} not supported")
 
@@ -74,43 +74,29 @@ def random_generate_param_with_x(layer_type, seq_range=(175, 200), batch_size=1)
     return hyper_params, (batch_size, *input_dim)
 
 
-def create_layer_from_param(layer_type, hyper_params, in_dim=None):
-    return layer_type(**hyper_params), torch.randn(*in_dim) if in_dim else layer_type(**hyper_params)
-
-
-def __test_layer():
-    for k in hyper_param_range.keys():
-        print(k)
-        layer_hparam, in_dim = random_generate_param_with_x(k)
-        layer, x = create_layer_from_param(k, layer_hparam, in_dim)
-        layer.eval()
-        layer(x)
-
-
 def gen_dataset(layer_type, size=200):
     data = {}
     for i in range(size):
-        hyparam, x = random_generate_param_with_x(layer_type)
+        hyparam, x = random_generate_hparams_and_x_shape(layer_type)
         data[f"{i}"] = {
-            "hyparam": hyparam,
+            "hparams": hyparam,
             "x_shape": x
         }
     return data
 
-def eval_path(path, *args):
-    return eval_dataset(json.load(open(path, 'r')), *args)
+# def eval_path(path, *args):
+#     return eval_dataset(json.load(open(path, 'r')), *args)
 
 
-def eval_dataset(data, layer_type):
-    label = {}
-    for idx in tqdm(data, desc="Eval exection time"):
-        hparam = data[idx]['hyparam']
-        in_dim = data[idx]['x_shape']
-        layer, x = create_layer_from_param(
-            layer_type, hyper_params=hparam, in_dim=in_dim)
-        label[idx] = timeit(layer, x)
-    return label
-
+# def eval_dataset(data, layer_type):
+#     label = {}
+#     for idx in tqdm(data, desc="Eval exection time"):
+#         hparam = data[idx]['hparams']
+#         in_dim = data[idx]['x_shape']
+#         kwargs = {'dim': ([2], [0])} if layer_type is LinearGeneral else {}
+#         prof = Profiler(layer_type, hparam, in_dim, **kwargs)
+#         label[idx] = prof.cpu_time_total
+#     return label
 
 def compute_memory_flops(layer_type, hyparam, x_shape):
     if layer_type is LinearGeneral:
@@ -238,26 +224,24 @@ def estimate_exec_time(layer_type, param, speed, read_bdw, write_bdw, prec=32):
     read, write, flops = compute_memory_flops(layer_type, **param)
     t_r = read * prec / read_bdw * 8e9
     t_w = write * prec / write_bdw * 8e9
-    t_c = flops / speed 
+    t_c = flops / speed
     return t_r + t_w + t_c
 
-
-def pred_path(path, *args):
-    return pred_dataset(json.load(open(path, 'r')), *args)
 
 def pred_dataset(data, layer_type, speed, read_bdw, write_bdw):
     pred = {}
     for idx in tqdm(data, desc="Estimate exection time"):
-        pred[idx] = estimate_exec_time(layer_type, data[idx], speed, read_bdw, write_bdw)
+        pred[idx] = estimate_exec_time(
+            layer_type, data[idx], speed, read_bdw, write_bdw)
     return pred
 
-if __name__ == '__main__':
-    # __test_layer()
-    data = gen_dataset(LinearGeneral)
-    json.dump(data, open("lg-data.json", 'w'), indent=4)
+# if __name__ == '__main__':
+#     # __test_layer()
+#     data = gen_dataset(LinearGeneral)
+#     json.dump(data, open("lg-data.json", 'w'), indent=4)
     
-    # pred = pred_dataset(data, LinearGeneral, 1000, 10, 10)
-    # json.dump(pred, open("lg-pred.json", 'w'), indent=4)
+#     # pred = pred_dataset(data, LinearGeneral, 1000, 10, 10)
+#     # json.dump(pred, open("lg-pred.json", 'w'), indent=4)
     
-    result = eval_dataset(data, LinearGeneral)
-    json.dump(result, open("lg-label.json", 'w'), indent=4)
+#     result = eval_dataset(data, LinearGeneral)
+#     json.dump(result, open("lg-label.json", 'w'), indent=4)
