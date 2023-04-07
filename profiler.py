@@ -160,7 +160,7 @@ def fit_and_plt(label, fname, need_plt=True):
         plt.show()
     return coefficients
 
-def profile_and_plt(layer_type):
+def gen_and_profile_and_plt(layer_type):
     data = gen_dataset(layer_type)
     label = profile(layer_type, data)
 
@@ -174,8 +174,13 @@ def profile_and_plt(layer_type):
 
 if __name__ == '__main__':
     from model import LinearGeneral, SelfAttention, EncoderBlock, MlpBlock
-
+    from gen import random_generate_hparams_and_x_shape
     types = [MlpBlock]
 
     for t in types:
-        profile_and_plt(t)
+        gen_and_profile_and_plt(t)
+
+    # t = MlpBlock
+    # hparams, x_shape = random_generate_hparams_and_x_shape(t)
+
+    # print(Profiler(t, hparams, x_shape))
