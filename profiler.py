@@ -139,7 +139,7 @@ def fit_and_plt(label, fname, need_plt=True):
     y_data = np.array(y)
 
     # 使用线性代数方法进行多元线性拟合
-    X = np.hstack((X, np.ones((X.shape[0], 1))))  # 添加常数列到 x 数据中
+    # X = np.hstack((X, np.ones((X.shape[0], 1))))  # 添加常数列到 x 数据中
     coefficients = np.linalg.lstsq(X, y_data, rcond=None)[0]  # 最小二乘法拟合
 
     if need_plt:
@@ -152,35 +152,96 @@ def fit_and_plt(label, fname, need_plt=True):
         y_fit = X_sorted.dot(coefficients)
 
         # 绘制数据点和拟合曲线
-        plt.title(f"{fname}")
+        plt.title(f"{fname} train")
         plt.scatter(range(len(y_sorted)), y_sorted, label="Data")
         plt.plot(range(len(y_fit)), y_fit, label="Fit")
         plt.legend()
-        plt.savefig(f"{fname}.png", format='png')
+        plt.savefig(f"{fname}-train.png", format='png')
         plt.show()
     return coefficients
 
-def gen_and_profile_and_plt(layer_type):
-    data = gen_dataset(layer_type)
+def pred_and_plt(label, coefficients, fname, need_plt=True):
+    y, x = [], []
+    for v in label.values():
+        y.append(v['time'])
+        x.append([v['read'], v['write'], v['flops']])
+
+    # 假设我们有以下的数据点
+    X = np.array(x)
+    y_data = np.array(y)
+
+    # 使用线性代数方法进行多元线性拟合
+    # X = np.hstack((X, np.ones((X.shape[0], 1))))  # 添加常数列到 x 数据中
+    coefficients = np.linalg.lstsq(X, y_data, rcond=None)[0]  # 最小二乘法拟合
+
+
+    if need_plt:
+        indices = np.argsort(y_data)
+        X_sorted = X[indices]
+        y_sorted = y_data[indices]
+
+        # 计算拟合曲线的值
+        # X_sorted = np.hstack((X_sorted, np.ones((X_sorted.shape[0], 1))))  # 添加常数列到排序后的 x 数据中
+        y_fit = X_sorted.dot(coefficients)
+
+        # 绘制数据点和拟合曲线
+        plt.title(f"{fname} test")
+        plt.scatter(range(len(y_sorted)), y_sorted, label="Data")
+        plt.plot(range(len(y_fit)), y_fit, label="Fit")
+        plt.legend()
+        plt.savefig(f"{fname}-pred.png", format='png')
+        plt.show()
+
+def gen_and_profile_and_pred_and_plt(layer_type, n=200, need_plt=True):
+    data = gen_dataset(layer_type, size=n)
     label = profile(layer_type, data)
 
-    fname = str(t).split('\'')[1].split('.')[-1]
+    fname = str(layer_type).split('\'')[1].split('.')[-1]
 
     json.dump(data, open(f"{fname}-data.json", 'w'), indent=4)
     json.dump(label, open(f"{fname}-label.json", 'w'), indent=4)
-    coeff = fit_and_plt(label, fname)
+    coeff = fit_and_plt(label, fname, need_plt=need_plt)
+    return coeff
 
+
+def test(layer_type, coeff, n=200):
+    data = gen_dataset(layer_type, size=n)
+    label = profile(layer_type, data)
+
+    fname = str(layer_type).split('\'')[1].split('.')[-1]
+    pred_and_plt(label, coeff, fname)
 
 
 if __name__ == '__main__':
     from model import LinearGeneral, SelfAttention, EncoderBlock, MlpBlock
     from gen import random_generate_hparams_and_x_shape
-    types = [MlpBlock]
+    # types = [MlpBlock]
+    # types = [nn.Linear]
 
-    for t in types:
-        gen_and_profile_and_plt(t)
+    # f = open('coeff.csv', 'w')
 
+    # for t in types:
+    #     fname = str(t).split('\'')[1].split('.')[-1]
+    #     coeff= gen_and_profile_and_pred_and_plt(t, n=50, need_plt=False)
+    #     f.write(f'{fname},{coeff}\n')
+    #     # test(t, coeff, 200)
+
+    # f.close()
     # t = MlpBlock
     # hparams, x_shape = random_generate_hparams_and_x_shape(t)
 
     # print(Profiler(t, hparams, x_shape))
+
+    # prof = Profiler(MlpBlock, {"in_dim": 868, "mlp_dim": 2752, "out_dim": 810}, [1, 868])
+    prof = Profiler(nn.Linear, **{
+        "hparams": {
+            "in_features": 2682,
+            "out_features": 2119
+        },
+        "x_shape": [
+            1,
+            2682
+        ]
+    })
+
+    print(Profiler.get_top_level_evts(prof.events))
