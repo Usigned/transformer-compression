@@ -148,22 +148,34 @@ def fit_and_plt(label, fname, need_plt=True):
     # X = np.hstack((X, np.ones((X.shape[0], 1))))  # 添加常数列到 x 数据中
     coefficients = np.linalg.lstsq(X, y_data, rcond=None)[0]  # 最小二乘法拟合
 
+    y_fit = X.dot(coefficients)
+
     if need_plt:
-        indices = np.argsort(y_data)
-        X_sorted = X[indices]
-        y_sorted = y_data[indices]
-
-        # 计算拟合曲线的值
-        # X_sorted = np.hstack((X_sorted, np.ones((X_sorted.shape[0], 1))))  # 添加常数列到排序后的 x 数据中
-        y_fit = X_sorted.dot(coefficients)
-
-        # 绘制数据点和拟合曲线
+        plt.figure()
         plt.title(f"{fname} train")
-        plt.scatter(range(len(y_sorted)), y_sorted, label="Data")
-        plt.plot(range(len(y_fit)), y_fit, label="Fit")
-        plt.legend()
+        plt.plot([min(y_data), max(y_data)], [min(y_data), max(y_data)], '--', color='gray')
+        plt.scatter(y_data, y_fit)
+        plt.xlabel('True Label')
+        plt.ylabel('Prediction')
         plt.savefig(f"{fname}-train.png", format='png')
-        plt.show()
+
+    # if need_plt:
+    #     indices = np.argsort(y_data)
+    #     X_sorted = X[indices]
+    #     y_sorted = y_data[indices]
+
+    #     # 计算拟合曲线的值
+    #     # X_sorted = np.hstack((X_sorted, np.ones((X_sorted.shape[0], 1))))  # 添加常数列到排序后的 x 数据中
+    #     y_fit = X_sorted.dot(coefficients)
+
+    #     # 绘制数据点和拟合曲线
+    #     plt.figure()
+    #     plt.title(f"{fname} train")
+    #     plt.scatter(range(len(y_sorted)), y_sorted, label="data", color='black')
+    #     plt.plot(range(len(y_fit)), y_fit, label="fit", color='black')
+    #     plt.legend()
+    #     plt.savefig(f"{fname}-train.png", format='png')
+
     return coefficients
 
 def pred_and_plt(label, coefficients, fname, need_plt=True):
@@ -180,23 +192,27 @@ def pred_and_plt(label, coefficients, fname, need_plt=True):
     # X = np.hstack((X, np.ones((X.shape[0], 1))))  # 添加常数列到 x 数据中
     coefficients = np.linalg.lstsq(X, y_data, rcond=None)[0]  # 最小二乘法拟合
 
-
+    y_fit = X.dot(coefficients)
+    
+    mer = np.mean(np.abs(y_data - y_fit) / y_data) * 100
     if need_plt:
-        indices = np.argsort(y_data)
-        X_sorted = X[indices]
-        y_sorted = y_data[indices]
-
-        # 计算拟合曲线的值
-        # X_sorted = np.hstack((X_sorted, np.ones((X_sorted.shape[0], 1))))  # 添加常数列到排序后的 x 数据中
-        y_fit = X_sorted.dot(coefficients)
-
-        # 绘制数据点和拟合曲线
+        plt.figure()
         plt.title(f"{fname} test")
-        plt.scatter(range(len(y_sorted)), y_sorted, label="Data")
-        plt.plot(range(len(y_fit)), y_fit, label="Fit")
-        plt.legend()
-        plt.savefig(f"{fname}-pred.png", format='png')
-        plt.show()
+        plt.plot([min(y_data), max(y_data)], [min(y_data), max(y_data)], '--', color='gray')
+        plt.scatter(y_data, y_fit)
+        plt.xlabel('True Label')
+        plt.ylabel('Prediction')
+        plt.savefig(f"{fname}-test.png", format='png')
+
+    # if need_plt:
+    #     # 绘制数据点和拟合曲线
+    #     plt.figure()
+    #     plt.title(f"{fname} test")
+    #     plt.scatter(range(len(y_sorted)), y_sorted, label="Data", color='black')
+    #     plt.plot(range(len(y_fit)), y_fit, label="Fit", color='black')
+    #     plt.legend()
+    #     plt.savefig(f"{fname}-pred.png", format='png')
+    return mer
 
 def gen_and_profile_and_pred_and_plt(layer_type, n=200, need_plt=True):
     data = gen_dataset(layer_type, size=n)
@@ -215,63 +231,22 @@ def test(layer_type, coeff, n=200):
     label = profile(layer_type, data)
 
     fname = str(layer_type).split('\'')[1].split('.')[-1]
-    pred_and_plt(label, coeff, fname)
+    return pred_and_plt(label, coeff, fname)
 
 
 if __name__ == '__main__':
-    from model import LinearGeneral, SelfAttention, EncoderBlock, MlpBlock
+    from model import LinearGeneral, SelfAttention, EncoderBlock, MlpBlock, Linear
     from gen import random_generate_hparams_and_x_shape
-    types = [MlpBlock]
-    # types = [nn.Linear]
+    types = [LinearGeneral, SelfAttention, EncoderBlock, MlpBlock, Linear]
 
     f = open('coeff.csv', 'w')
 
     for t in types:
+        coeff = (-1, -1, -1)
         fname = str(t).split('\'')[1].split('.')[-1]
+        # while coeff[0] < 0 or coeff[1] < 0 or coeff[2] < 0:
         coeff= gen_and_profile_and_pred_and_plt(t, n=50, need_plt=True)
         f.write(f'{fname},{coeff}\n')
-        test(t, coeff, 200)
-
+        mer = test(t, coeff, 200)
+        f.write(f'{fname},{mer}\n')
     f.close()
-    # t = MlpBlock
-    # hparams, x_shape = random_generate_hparams_and_x_shape(t)
-
-    # print(Profiler(t, hparams, x_shape))
-
-    # prof = Profiler(MlpBlock, {"in_dim": 868, "mlp_dim": 2752, "out_dim": 810}, [1, 868])
-    # prof = Profiler(nn.Linear, **{
-    #     "hparams": {
-    #         "in_features": 1024,
-    #         "out_features": 1024
-    #     },
-    #     "x_shape": [
-    #         1,
-    #         1024
-    #     ]
-    # })
-
-
-    # prof = Profiler(LinearGeneral, **{
-    #     "hparams": {
-    #         "in_dim": [
-    #             183
-    #         ],
-    #         "feat_dim": [
-    #             3,
-    #             61
-    #         ]
-    #     },
-    #     "x_shape": [
-    #         1,
-    #         179,
-    #         183
-    #     ]
-    # })
-
-    # for evt in Profiler.get_top_level_evts(prof.events):
-    #     # print(evt.cpu_memory_usage)
-    #     print(evt)
-
-    # print(Profiler.get_top_level_evts(prof.events))
-
-    # print(prof.total_write)

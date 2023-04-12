@@ -1,13 +1,17 @@
 from typing import Type
 import torch
 import torch.nn as nn
-from model import LinearGeneral, MlpBlock, SelfAttention, EncoderBlock
+from model import LinearGeneral, MlpBlock, SelfAttention, EncoderBlock, Linear
 import random
 import json
 from tqdm import tqdm
 import numpy as np
 
 hyper_param_range = {
+    Linear: {
+        "in_features": (200, 3500),
+        "out_features": (200, 3500),
+    },
     nn.Linear: {
         "in_features": (200, 3500),
         "out_features": (200, 3500),
@@ -65,7 +69,7 @@ def random_generate_hparams_and_x_shape(layer_type, seq_range=(175, 200), batch_
             "attn_dropout_rate": 0.
         }
 
-    input_dim = hyper_params['in_dim'] if layer_type is not nn.Linear else hyper_params['in_features']
+    input_dim = hyper_params['in_dim'] if layer_type not in [nn.Linear, Linear] else hyper_params['in_features']
 
     input_dim = (input_dim, ) if type(input_dim) is int else input_dim
     input_dim = (random.randint(*seq_range),

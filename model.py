@@ -9,6 +9,16 @@ import torch.nn.functional as F
 from utils import freeze_but_type, assert_model_all_freezed, assert_all_module_type_freezed, set_freeze_all
 
 
+class Linear(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(Linear, self).__init__()
+        self.weight = nn.Parameter(torch.randn(in_features, out_features))
+        self.bias = nn.Parameter(torch.zeros(out_features))
+
+    def forward(self, x):
+        return torch.matmul(x, self.weight) + self.bias
+        
+
 class PositionEmbs(nn.Module):
     def __init__(self, num_patches, emb_dim, dropout_rate=0.1):
         super(PositionEmbs, self).__init__()
@@ -34,8 +44,8 @@ class MlpBlock(nn.Module):
     def __init__(self, in_dim, mlp_dim, out_dim, dropout_rate=0.1):
         super(MlpBlock, self).__init__()
         # init layers
-        self.fc1 = nn.Linear(in_dim, mlp_dim)
-        self.fc2 = nn.Linear(mlp_dim, out_dim)
+        self.fc1 = Linear(in_dim, mlp_dim)
+        self.fc2 = Linear(mlp_dim, out_dim)
         self.act = nn.GELU()
         if dropout_rate > 0.0:
             self.dropout1 = nn.Dropout(dropout_rate)
@@ -46,7 +56,7 @@ class MlpBlock(nn.Module):
 
     def forward(self, x):
         out = self.fc1(x)
-        out = self.act(out)
+        # out = self.act(out)
         if self.dropout1:
             out = self.dropout1(out)
         out = self.fc2(out)
