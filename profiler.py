@@ -46,6 +46,22 @@ class Profiler:
         return sum([evt.cpu_time_total for evt in self.events]) / 1e3
 
     @property
+    def estimate_memory_usage(self):
+        '''
+        B
+        '''
+        max_mem = 0
+        cur_mem = 0
+        for evt in self.events:
+            evt: FunctionEvent
+            if evt.cpu_parent is None and evt.cpu_memory_usage != 0:
+                if evt.name == '[memory]' and evt.cpu_memory_usage > 0:
+                    continue
+                cur_mem += evt.cpu_memory_usage
+                max_mem = max(max_mem, cur_mem)
+        return max_mem
+
+    @property
     def max_memory_usage(self):
         '''
         KB = 1024B
@@ -57,7 +73,7 @@ class Profiler:
             if evt.cpu_parent is None and evt.cpu_memory_usage != 0:  # filter non-top-level op
                 cur_mem += evt.cpu_memory_usage
                 max_mem = max(max_mem, cur_mem)
-        return max_mem // 1024
+        return max_mem
 
     def get_read_write_kflops_per_op(self):
         '''
@@ -209,7 +225,6 @@ def gen_and_profile_and_pred_and_plt(layer_type, n=200, need_plt=True):
     coeff = fit_and_plt(label, fname, need_plt=need_plt)
     return coeff
 
-
 def test(layer_type, coeff, n=200):
     data = gen_dataset(layer_type, size=n)
     label = profile(layer_type, data)
@@ -224,54 +239,22 @@ if __name__ == '__main__':
     types = [MlpBlock]
     # types = [nn.Linear]
 
-    f = open('coeff.csv', 'w')
+    # f = open('coeff.csv', 'w')
 
-    for t in types:
-        fname = str(t).split('\'')[1].split('.')[-1]
-        coeff= gen_and_profile_and_pred_and_plt(t, n=50, need_plt=True)
-        f.write(f'{fname},{coeff}\n')
-        test(t, coeff, 200)
+    # for t in types:
+    #     fname = str(t).split('\'')[1].split('.')[-1]
+    #     coeff= gen_and_profile_and_pred_and_plt(t, n=50, need_plt=True)
+    #     f.write(f'{fname},{coeff}\n')
+    #     test(t, coeff, 200)
 
-    f.close()
-    # t = MlpBlock
-    # hparams, x_shape = random_generate_hparams_and_x_shape(t)
-
-    # print(Profiler(t, hparams, x_shape))
-
-    # prof = Profiler(MlpBlock, {"in_dim": 868, "mlp_dim": 2752, "out_dim": 810}, [1, 868])
-    # prof = Profiler(nn.Linear, **{
-    #     "hparams": {
-    #         "in_features": 1024,
-    #         "out_features": 1024
-    #     },
-    #     "x_shape": [
-    #         1,
-    #         1024
-    #     ]
-    # })
-
-
-    # prof = Profiler(LinearGeneral, **{
-    #     "hparams": {
-    #         "in_dim": [
-    #             183
-    #         ],
-    #         "feat_dim": [
-    #             3,
-    #             61
-    #         ]
-    #     },
-    #     "x_shape": [
-    #         1,
-    #         179,
-    #         183
-    #     ]
-    # })
+    # f.close()
+    
+    # t = EncoderBlock
+    t = SelfAttention
+    prof = Profiler(t, *random_generate_hparams_and_x_shape(t))
 
     # for evt in Profiler.get_top_level_evts(prof.events):
-    #     # print(evt.cpu_memory_usage)
-    #     print(evt)
-
-    # print(Profiler.get_top_level_evts(prof.events))
-
-    # print(prof.total_write)
+    #     print(evt.name, evt.cpu_memory_usage)
+        # print(evt)
+    print(prof.estimate_memory_usage)
+    print(prof.max_memory_usage)
