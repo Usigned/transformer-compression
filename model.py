@@ -17,7 +17,7 @@ class Linear(nn.Module):
 
     def forward(self, x):
         return torch.matmul(x, self.weight) + self.bias
-        
+
 
 class PositionEmbs(nn.Module):
     def __init__(self, num_patches, emb_dim, dropout_rate=0.1):
@@ -41,11 +41,11 @@ class PositionEmbs(nn.Module):
 class MlpBlock(nn.Module):
     """ Transformer Feed-Forward Block """
 
-    def __init__(self, in_dim, mlp_dim, out_dim, dropout_rate=0.1):
+    def __init__(self, in_dim, mlp_dim, out_dim, dropout_rate=0.1, linear=nn.Linear):
         super(MlpBlock, self).__init__()
         # init layers
-        self.fc1 = Linear(in_dim, mlp_dim)
-        self.fc2 = Linear(mlp_dim, out_dim)
+        self.fc1 = linear(in_dim, mlp_dim)
+        self.fc2 = linear(mlp_dim, out_dim)
         self.act = nn.GELU()
         if dropout_rate > 0.0:
             self.dropout1 = nn.Dropout(dropout_rate)
@@ -77,16 +77,16 @@ class LinearGeneral(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, in_dim, heads=8, dropout_rate=0.1):
+    def __init__(self, in_dim, heads=8, dropout_rate=0.1, linear_general=LinearGeneral):
         super(SelfAttention, self).__init__()
         self.heads = heads
         self.head_dim = in_dim // heads
         self.scale = self.head_dim ** 0.5
 
-        self.query = LinearGeneral((in_dim,), (self.heads, self.head_dim))
-        self.key = LinearGeneral((in_dim,), (self.heads, self.head_dim))
-        self.value = LinearGeneral((in_dim,), (self.heads, self.head_dim))
-        self.out = LinearGeneral((self.heads, self.head_dim), (in_dim,))
+        self.query = linear_general((in_dim,), (self.heads, self.head_dim))
+        self.key = linear_general((in_dim,), (self.heads, self.head_dim))
+        self.value = linear_general((in_dim,), (self.heads, self.head_dim))
+        self.out = linear_general((self.heads, self.head_dim), (in_dim,))
 
         if dropout_rate > 0:
             self.dropout = nn.Dropout(dropout_rate)
@@ -113,18 +113,19 @@ class SelfAttention(nn.Module):
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self, in_dim, mlp_dim, num_heads, dropout_rate=0.1, attn_dropout_rate=0.1, attn_type=SelfAttention):
+    def __init__(self, in_dim, mlp_dim, num_heads, dropout_rate=0.1, attn_dropout_rate=0.1, attn_type=SelfAttention, linear=nn.Linear, linear_general=LinearGeneral):
         super(EncoderBlock, self).__init__()
 
         self.norm1 = nn.LayerNorm(in_dim)
         self.attn = attn_type(in_dim, heads=num_heads,
-                              dropout_rate=attn_dropout_rate)
+                              dropout_rate=attn_dropout_rate, linear_general=linear_general)
         if dropout_rate > 0:
             self.dropout = nn.Dropout(dropout_rate)
         else:
             self.dropout = None
         self.norm2 = nn.LayerNorm(in_dim)
-        self.mlp = MlpBlock(in_dim, mlp_dim, in_dim, dropout_rate)
+        self.mlp = MlpBlock(in_dim, mlp_dim, in_dim,
+                            dropout_rate, linear=linear)
 
     def forward(self, x):
         residual = x
@@ -141,7 +142,7 @@ class EncoderBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, num_patches, emb_dim, mlp_dim, num_layers=12, num_heads=12, dropout_rate=0.1, attn_dropout_rate=0.0, attn_type=SelfAttention):
+    def __init__(self, num_patches, emb_dim, mlp_dim, num_layers=12, num_heads=12, dropout_rate=0.1, attn_dropout_rate=0.0, attn_type=SelfAttention, linear=nn.Linear, linear_general=LinearGeneral):
         super(Encoder, self).__init__()
         # positional embedding
         self.pos_embedding = PositionEmbs(num_patches, emb_dim, dropout_rate)
@@ -150,7 +151,7 @@ class Encoder(nn.Module):
         self.encoder_layers = nn.ModuleList()
         for _ in range(num_layers):
             layer = EncoderBlock(in_dim, mlp_dim, num_heads,
-                                 dropout_rate, attn_dropout_rate, attn_type)
+                                 dropout_rate, attn_dropout_rate, attn_type, linear=linear, linear_general=linear_general)
             self.encoder_layers.append(layer)
         self.norm = nn.LayerNorm(in_dim)
 
@@ -174,7 +175,7 @@ class VisionTransformer(nn.Module):
                  num_layers=12,
                  attn_dropout_rate=0.0,
                  dropout_rate=0.1,
-                 attn_type=SelfAttention):
+                 attn_type=SelfAttention, linear=nn.Linear, linear_general=LinearGeneral):
         super(VisionTransformer, self).__init__()
         h, w = image_size
 
@@ -195,7 +196,7 @@ class VisionTransformer(nn.Module):
             num_heads=num_heads,
             dropout_rate=dropout_rate,
             attn_dropout_rate=attn_dropout_rate,
-            attn_type=attn_type)
+            attn_type=attn_type, linear=linear, linear_general=linear_general)
 
     def forward(self, x):
         emb = self.embedding(x)     # (n, c, gh, gw)
@@ -222,7 +223,7 @@ class CAFIA_Transformer(nn.Module):
             num_layers=args.num_layers,
             attn_dropout_rate=args.attn_dropout_rate,
             dropout_rate=args.dropout_rate,
-            attn_type=args.attn_type)
+            attn_type=args.attn_type, linear=args.linear, linear_general=args.linear_general)
         self.init_weight(args)
         self.classifier = nn.Linear(args.emb_dim, args.num_classes)
 
@@ -237,7 +238,6 @@ class CAFIA_Transformer(nn.Module):
         feat = self.vit(batch_X)
         output = self.classifier(feat[:, 0])
         return output
-
 
         layer = LinearGeneral(in_dim=(in_dim, ), feat_dim=(feat_dim, ))
         x = torch.randn(b, n, in_dim)

@@ -139,17 +139,17 @@ class Profiler:
         print(f"cpu time: {self.cpu_time_total}ms\nmax mem usage: {self.max_memory_usage}KB\ntotal mem read: {self.total_read}KB\ntotal mem write: {self.total_write}KB\ntotal flops: {self.total_flops}")
 
 
-def profile(layer_type, data, num_threads=1):
+def train(layer_type, data, num_threads=1):
     label = {}
     for idx in tqdm(data, desc="profile"):
         hparam = data[idx]['hparams']
         in_dim = data[idx]['x_shape']
         kwargs = {'dims': ([2], [0])} if layer_type is LinearGeneral else {}
         prof = Profiler(layer_type, hparam, in_dim, num_threads=num_threads, **kwargs)
-        label[idx] = {'time': prof.cpu_time_total, 'mem': prof.max_memory_usage, 'read': prof.total_read, 'write':prof.total_write, 'flops':prof.total_flops}
+        label[idx] = {'time': prof.cpu_time_total, 'mem': prof.max_memory_usage, 'read': prof.total_read, 'write':prof.total_write, 'flops':prof.total_flops, 'emem':prof.estimate_memory_usage}
     return label
 
-def fit_and_plt(label, fname, need_plt=True):
+def fit_lat(label, fname, need_plt=True):
 
     y, x = [], []
     for v in label.values():
@@ -167,34 +167,13 @@ def fit_and_plt(label, fname, need_plt=True):
     y_fit = X.dot(coefficients)
 
     if need_plt:
-        plt.figure()
-        plt.title(f"{fname} train")
-        plt.plot([min(y_data), max(y_data)], [min(y_data), max(y_data)], '--', color='gray')
-        plt.scatter(y_data, y_fit)
-        plt.xlabel('True Label')
-        plt.ylabel('Prediction')
-        plt.savefig(f"{fname}-train.png", format='png')
-
-    # if need_plt:
-    #     indices = np.argsort(y_data)
-    #     X_sorted = X[indices]
-    #     y_sorted = y_data[indices]
-
-    #     # 计算拟合曲线的值
-    #     # X_sorted = np.hstack((X_sorted, np.ones((X_sorted.shape[0], 1))))  # 添加常数列到排序后的 x 数据中
-    #     y_fit = X_sorted.dot(coefficients)
-
-    #     # 绘制数据点和拟合曲线
-    #     plt.figure()
-    #     plt.title(f"{fname} train")
-    #     plt.scatter(range(len(y_sorted)), y_sorted, label="data", color='black')
-    #     plt.plot(range(len(y_fit)), y_fit, label="fit", color='black')
-    #     plt.legend()
-    #     plt.savefig(f"{fname}-train.png", format='png')
-
+        plt_fig(y_fit, y_data, f'{fname} train latency', save_path=f'{fname}-lat-train.png')
     return coefficients
 
-def pred_and_plt(label, coefficients, fname, need_plt=True):
+def mape(label, pred):
+    return np.mean(np.abs(label - pred) / label) * 100
+
+def pred_lat(label, coefficients, fname, need_plt=True):
     y, x = [], []
     for v in label.values():
         y.append(v['time'])
@@ -210,66 +189,85 @@ def pred_and_plt(label, coefficients, fname, need_plt=True):
 
     y_fit = X.dot(coefficients)
     
-    mer = np.mean(np.abs(y_data - y_fit) / y_data) * 100
+    res = mape(y_data, y_fit)
     if need_plt:
-        plt.figure()
-        plt.title(f"{fname} test")
-        plt.plot([min(y_data), max(y_data)], [min(y_data), max(y_data)], '--', color='gray')
-        plt.scatter(y_data, y_fit)
-        plt.xlabel('True Label')
-        plt.ylabel('Prediction')
-        plt.savefig(f"{fname}-test.png", format='png')
+        plt_fig(y_fit, y_data, f'{fname} test latency', save_path=f'{fname}-lat-test.png')
+    return res
 
-    # if need_plt:
-    #     # 绘制数据点和拟合曲线
-    #     plt.figure()
-    #     plt.title(f"{fname} test")
-    #     plt.scatter(range(len(y_sorted)), y_sorted, label="Data", color='black')
-    #     plt.plot(range(len(y_fit)), y_fit, label="Fit", color='black')
-    #     plt.legend()
-    #     plt.savefig(f"{fname}-pred.png", format='png')
-    return mer
+def plt_fig(y_fit, y_data, title, save_path, format='png', x_label='True Label', y_label='Prediction'):
+    plt.figure()
+    plt.title(title)
+    plt.plot([min(y_data), max(y_data)], [min(y_data), max(y_data)], '--', color='gray')
+    plt.scatter(y_data, y_fit)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.savefig(save_path, format=format)
 
-def gen_and_profile_and_pred_and_plt(layer_type, n=200, need_plt=True):
+def gen_and_profile_and_pred(layer_type, n=200, need_plt=True):
     data = gen_dataset(layer_type, size=n)
-    label = profile(layer_type, data)
+    label = train(layer_type, data)
 
     fname = str(layer_type).split('\'')[1].split('.')[-1]
 
     json.dump(data, open(f"{fname}-data.json", 'w'), indent=4)
     json.dump(label, open(f"{fname}-label.json", 'w'), indent=4)
-    coeff = fit_and_plt(label, fname, need_plt=need_plt)
+    coeff = fit_lat(label, fname, need_plt=need_plt)
     return coeff
 
-def test(layer_type, coeff, n=200):
+def test_lat(layer_type, coeff, n=200, need_plt=True):
     data = gen_dataset(layer_type, size=n)
-    label = profile(layer_type, data)
+    label = train(layer_type, data)
 
     fname = str(layer_type).split('\'')[1].split('.')[-1]
-    return pred_and_plt(label, coeff, fname)
+    return pred_lat(label, coeff, fname, need_plt=need_plt)
+
+def pred_mem(label, fname, need_plt=True):
+    mem, emem = [], []
+    for v in label.values():
+        mem.append(v['mem'])
+        emem.append(v['emem'])
+
+    mem = np.array(mem)
+    emem = np.array(emem)
+    if need_plt:
+        plt_fig(emem, mem, f'{fname} test memory', f'{fname}-mem-test.png')
+    return mape(mem, emem)
+
+def get_fname(layer_type):
+    return str(layer_type).split('\'')[1].split('.')[-1]
 
 
-if __name__ == '__main__':
-    from model import LinearGeneral, SelfAttention, EncoderBlock, MlpBlock, Linear
-    from gen import random_generate_hparams_and_x_shape
-    types = [LinearGeneral, SelfAttention, EncoderBlock, MlpBlock, Linear]
+def test_mem(layer_type, n=200):
+    fname = get_fname(layer_type)
+    data = gen_dataset(layer_type, size=n)
+    label = train(layer_type, data)
+    return pred_mem(label, fname, need_plt=True)
 
-    # f = open('coeff.csv', 'w')
-
-    # for t in types:
-    #     fname = str(t).split('\'')[1].split('.')[-1]
-    #     coeff= gen_and_profile_and_pred_and_plt(t, n=50, need_plt=True)
-    #     f.write(f'{fname},{coeff}\n')
-    #     test(t, coeff, 200)
-
-    # f.close()
-    
-    # t = EncoderBlock
-    t = SelfAttention
+def show_top_evt(layer_type):
+    t = layer_type
     prof = Profiler(t, *random_generate_hparams_and_x_shape(t))
 
     # for evt in Profiler.get_top_level_evts(prof.events):
     #     print(evt.name, evt.cpu_memory_usage)
-        # print(evt)
-    print(prof.estimate_memory_usage)
-    print(prof.max_memory_usage)
+    print(Profiler.get_top_level_evts(prof.events).table(top_level_events_only=True))
+
+if __name__ == '__main__':
+    from model import LinearGeneral, SelfAttention, EncoderBlock, MlpBlock, Linear
+    from gen import random_generate_hparams_and_x_shape
+    types = [Linear]
+
+    f = open('mem-mape.csv', 'w')
+
+    coeff = -1, -1, -1
+    while coeff[-1] < 0:
+        for t in types:
+            fname = str(t).split('\'')[1].split('.')[-1]
+            coeff= gen_and_profile_and_pred(t, n=50, need_plt=False)
+            # res = test_lat(t, coeff, 200, False)
+            # res = test_mem(t)
+            f.write(f'{get_fname(t)},{coeff}\n')
+            f.flush()
+        
+    f.close()
+
+    # show_top_evt(SelfAttention)

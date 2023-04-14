@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from torch.nn.modules.utils import _single, _pair, _triple
 import math
-
+from model import *
 
 class QModule(nn.Module):
     def __init__(self, w_bit=-1, a_bit=-1, half_wave=True):
@@ -250,58 +250,6 @@ class STE(torch.autograd.Function):
         return grad_outputs, None
 
 
-class QConv2d(QModule):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=False,
-                 w_bit=-1, a_bit=-1, half_wave=True):
-        super(QConv2d, self).__init__(w_bit=w_bit, a_bit=a_bit, half_wave=half_wave)
-        if in_channels % groups != 0:
-            raise ValueError('in_channels must be divisible by groups')
-        if out_channels % groups != 0:
-            raise ValueError('out_channels must be divisible by groups')
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel_size = _pair(kernel_size)
-        self.stride = _pair(stride)
-        self.padding = _pair(padding)
-        self.dilation = _pair(dilation)
-        self.groups = groups
-
-        self.weight = nn.Parameter(torch.zeros(out_channels, in_channels // groups, *self.kernel_size))
-        if bias:
-            self.bias = nn.Parameter(torch.zeros(out_channels))
-        else:
-            self.register_parameter('bias', None)
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in)
-            nn.init.uniform_(self.bias, -bound, bound)
-
-    def forward(self, inputs):
-        inputs, weight, bias = self._quantize(inputs=inputs, weight=self.weight, bias=self.bias)
-        return F.conv2d(inputs, weight, bias, self.stride, self.padding, self.dilation, self.groups)
-
-    def extra_repr(self):
-        s = ('{in_channels}, {out_channels}, kernel_size={kernel_size}'
-             ', stride={stride}')
-        if self.padding != (0,) * len(self.padding):
-            s += ', padding={padding}'
-        if self.dilation != (1,) * len(self.dilation):
-            s += ', dilation={dilation}'
-        if self.groups != 1:
-            s += ', groups={groups}'
-        if self.bias is None:
-            s += ', bias=False'
-        if self.w_bit > 0 or self.a_bit > 0:
-            s += ', w_bit={}, a_bit={}'.format(self.w_bit, self.a_bit)
-            s += ', half wave' if self.half_wave else ', full wave'
-        return s.format(**self.__dict__)
-
-
 class QLinear(QModule):
     def __init__(self, in_features, out_features, bias=True, w_bit=-1, a_bit=-1, half_wave=True):
         super(QLinear, self).__init__(w_bit=w_bit, a_bit=a_bit, half_wave=half_wave)
@@ -328,6 +276,38 @@ class QLinear(QModule):
     def extra_repr(self):
         s = 'in_features={}, out_features={}, bias={}'.format(
             self.in_features, self.out_features, self.bias is not None)
+        if self.w_bit > 0 or self.a_bit > 0:
+            s += ', w_bit={w_bit}, a_bit={a_bit}'.format(w_bit=self.w_bit, a_bit=self.a_bit)
+            s += ', half wave' if self.half_wave else ', full wave'
+        return s
+
+
+class QLinearGeneral(QModule, LinearGeneral):
+    def __init__(self, in_dim=(768,), feat_dim=(12, 64), w_bit=-1, a_bit=-1, half_wave=True):
+        QModule.__init__(self, w_bit, a_bit, half_wave)
+        LinearGeneral.__init__(self, in_dim, feat_dim)
+
+        self.in_dim = in_dim
+        self.feat_dim = feat_dim
+        self.weight = nn.Parameter(torch.randn(*in_dim, *feat_dim))
+        self.bias = nn.Parameter(torch.zeros(*feat_dim))
+
+        self.reset_parameters()
+
+    def forward(self, inputs, dims=([2], [0])):
+        inputs, weight, bias = inputs, weight, bias = self._quantize(inputs=inputs, weight=self.weight, bias=self.bias)
+        return torch.tensordot(inputs, weight, dims=dims) + bias
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def extra_repr(self):
+        s = 'in_dim={}, feat_dim={}'.format(
+            self.in_dim, self.feat_dim)
         if self.w_bit > 0 or self.a_bit > 0:
             s += ', w_bit={w_bit}, a_bit={a_bit}'.format(w_bit=self.w_bit, a_bit=self.a_bit)
             s += ', half wave' if self.half_wave else ', full wave'
