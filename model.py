@@ -56,7 +56,7 @@ class MlpBlock(nn.Module):
 
     def forward(self, x):
         out = self.fc1(x)
-        # out = self.act(out)
+        out = self.act(out)
         if self.dropout1:
             out = self.dropout1(out)
         out = self.fc2(out)

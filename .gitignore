@@ -142,4 +142,8 @@ cython_debug/
 *.png
 
 
-data/*
+data
+
+kernel_meta_*
+
+cache

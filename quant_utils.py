@@ -323,3 +323,32 @@ def set_mixed_precision(model:nn.Module, quantizable_idx, strategy):
         else:
             layer.w_bit = quantize_layer_bit_dict[i][0]
             layer.a_bit = quantize_layer_bit_dict[i][1]
+
+def get_qmvit(args, path=None):
+    args.linear = QLinear
+    args.linear_general = QLinearGeneral
+    args.attn_type = SelfAttention
+    qvit = CAFIA_Transformer(args)
+
+    if path:
+        load_weight_for_vit(qvit, path)
+    return qvit
+
+def get_quantizable_idx(model:nn.Module):
+    idx = []
+    for i, m in enumerate(model.modules()):
+        if isinstance(m, QModule):
+            idx.append(i)
+    return idx
+
+def get_single_prec_quant_strategy(model:nn.Module, w=8, a=8):
+    idx = get_quantizable_idx(model)
+    weight_strategy = [w] * len(idx)
+    act_strategy = [a] * len(idx)
+    return idx, mix_weight_act_strategy(weight_strategy, act_strategy)
+
+def mix_weight_act_strategy(w_s, a_s):
+    s = []
+    for b1, b2 in zip(w_s, a_s):
+        s.append((b1, b2))
+    return s
