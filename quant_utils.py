@@ -312,3 +312,14 @@ class QLinearGeneral(QModule, LinearGeneral):
             s += ', w_bit={w_bit}, a_bit={a_bit}'.format(w_bit=self.w_bit, a_bit=self.a_bit)
             s += ', half wave' if self.half_wave else ', full wave'
         return s
+
+def set_mixed_precision(model:nn.Module, quantizable_idx, strategy):
+    assert len(quantizable_idx) == len(strategy), \
+        'You should provide the same number of bit setting as layer list for weight quantization!'
+    quantize_layer_bit_dict = {n: b for n, b in zip(quantizable_idx, strategy)}
+    for i, layer in enumerate(model.modules()):
+        if i not in quantizable_idx:
+            continue
+        else:
+            layer.w_bit = quantize_layer_bit_dict[i][0]
+            layer.a_bit = quantize_layer_bit_dict[i][1]

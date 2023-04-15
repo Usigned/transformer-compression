@@ -224,7 +224,7 @@ class CAFIA_Transformer(nn.Module):
             attn_dropout_rate=args.attn_dropout_rate,
             dropout_rate=args.dropout_rate,
             attn_type=args.attn_type, linear=args.linear, linear_general=args.linear_general)
-        self.init_weight(args)
+        # self.init_weight(args)
         self.classifier = nn.Linear(args.emb_dim, args.num_classes)
 
     def init_weight(self, args):
@@ -239,6 +239,7 @@ class CAFIA_Transformer(nn.Module):
         output = self.classifier(feat[:, 0])
         return output
 
-        layer = LinearGeneral(in_dim=(in_dim, ), feat_dim=(feat_dim, ))
-        x = torch.randn(b, n, in_dim)
-        y = layer(x, dims=([2], [0]))
+
+def load_weight_for_vit(model: CAFIA_Transformer, path: str):
+    model.load_state_dict(torch.load(path, map_location=torch.device('cpu')), strict=False)
+    return model

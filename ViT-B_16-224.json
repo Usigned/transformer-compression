@@ -10,7 +10,7 @@
     "batch_size": 32,
     "epoches": 100,
     "output": "./output/mvit",
-    "vit_model": "./Vit_weights/imagenet21k+imagenet2012_ViT-B_16-224.pth",
+    "vit_model": "C:\\Users\\1\\Downloads\\imagenet21k+imagenet2012_ViT-B_16-224.pth",
     "image_size": 224,
     "num_classes": 10,
     "patch_size": 16,
@@ -21,6 +21,5 @@
     "attn_dropout_rate": 0.0,
     "dropout_rate": 0.1,
     "cifar10_vit": "./output/vit/0.9853000044822693.pt",
-    "alpha": 1e-02,
-    "pwd": "/home/ma-user/work/Vision-Transformer-ViT"
+    "alpha": 1e-02
 }
