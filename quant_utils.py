@@ -282,10 +282,9 @@ class QLinear(QModule):
         return s
 
 
-class QLinearGeneral(QModule, LinearGeneral):
+class QLinearGeneral(QModule):
     def __init__(self, in_dim=(768,), feat_dim=(12, 64), w_bit=-1, a_bit=-1, half_wave=True):
-        QModule.__init__(self, w_bit, a_bit, half_wave)
-        LinearGeneral.__init__(self, in_dim, feat_dim)
+        super(QLinearGeneral, self).__init__(w_bit=w_bit, a_bit=a_bit, half_wave=half_wave)
 
         self.in_dim = in_dim
         self.feat_dim = feat_dim
