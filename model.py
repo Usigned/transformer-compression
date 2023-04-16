@@ -239,3 +239,10 @@ class CAFIA_Transformer(nn.Module):
 
 def load_weight_for_vit(model: CAFIA_Transformer, path: str):
     return model.load_state_dict(torch.load(path, map_location=torch.device('cpu')), strict=False)
+
+
+def get_vit(args, path=None):
+    vit = CAFIA_Transformer(args)
+    if path:
+        print(load_weight_for_vit(vit, path))
+    return vit

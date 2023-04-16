@@ -421,16 +421,6 @@ def set_mixed_precision(model: nn.Module, quantizable_idx, strategy):
             layer.a_bit = quantize_layer_bit_dict[i][1]
 
 
-def get_qmvit(args, path=None):
-    args.linear = QLinear
-    args.linear_general = QLinearGeneral
-    args.attn_type = SelfAttention
-    qvit = CAFIA_Transformer(args)
-
-    if path:
-        load_weight_for_vit(qvit, path)
-    return qvit
-
 
 def get_quantizable_idx(model: nn.Module):
     idx = []

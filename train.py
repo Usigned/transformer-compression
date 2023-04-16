@@ -82,6 +82,7 @@ def eval_model(model, dataloader, device='cpu'):
         
     acc = (correct / total).item()
     logging.info('Accuracy: %f', acc)
+    return acc
 
 
 def finetune(model:nn.Module, trainloader, device, epoches=1, save_dir=None, fname=None, **optim_kwargs):
