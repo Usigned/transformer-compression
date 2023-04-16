@@ -30,6 +30,9 @@ class QModule(nn.Module):
         self._trainable_activation_range = True
         self._calibrate = False
 
+        self._dynamic_activation = True
+        self._no_weight_trunc = True
+
     @property
     def w_bit(self):
         return self._w_bit
@@ -138,6 +141,13 @@ class QModule(nn.Module):
 
     def _quantize_activation(self, inputs):
         if self._quantized and self._a_bit > 0:
+            if self._dynamic_activation:
+                ori_x = inputs
+                scaling_factor = inputs.abs().max().item() / (2. ** self._a_bit - 1.)
+                x = ori_x.detach().clone()
+                x.div_(scaling_factor).round_().mul_(scaling_factor)
+
+                return STE.apply(ori_x, x)
             if self._calibrate:
                 if self._a_bit < 5:
                     threshold = self._compute_threshold(inputs.data.cpu().numpy(), self._a_bit)
@@ -175,7 +185,7 @@ class QModule(nn.Module):
             weight = weight / weight.abs().max()
 
         if self._quantized and self._w_bit > 0:
-            threshold = self.weight_range.item()
+            threshold = self.weight_range.item() if not self._no_weight_trunc else weight.abs().max().item()
             if threshold <= 0:
                 threshold = weight.abs().max().item()
                 self.weight_range.data[0] = threshold
@@ -283,18 +293,19 @@ class QLinear(QModule):
 
 
 class QLinearGeneral(QModule):
-    def __init__(self, in_dim=(768,), feat_dim=(12, 64), w_bit=-1, a_bit=-1, half_wave=True):
+    def __init__(self, in_dim=(768,), feat_dim=(12, 64), hwq=False, w_bit=-1, a_bit=-1, half_wave=True):
         super(QLinearGeneral, self).__init__(w_bit=w_bit, a_bit=a_bit, half_wave=half_wave)
 
         self.in_dim = in_dim
         self.feat_dim = feat_dim
         self.weight = nn.Parameter(torch.randn(*in_dim, *feat_dim))
         self.bias = nn.Parameter(torch.zeros(*feat_dim))
-
+        self.hwq = hwq #head wise
         self.reset_parameters()
 
+
     def forward(self, inputs, dims=([2], [0])):
-        inputs, weight, bias = inputs, weight, bias = self._quantize(inputs=inputs, weight=self.weight, bias=self.bias)
+        inputs, weight, bias = self._quantize(inputs=inputs, weight=self.weight, bias=self.bias)
         return torch.tensordot(inputs, weight, dims=dims) + bias
 
     def reset_parameters(self):
@@ -310,7 +321,26 @@ class QLinearGeneral(QModule):
         if self.w_bit > 0 or self.a_bit > 0:
             s += ', w_bit={w_bit}, a_bit={a_bit}'.format(w_bit=self.w_bit, a_bit=self.a_bit)
             s += ', half wave' if self.half_wave else ', full wave'
+            s += ', head wise' if self.hwq else ', tensor wise'
         return s
+
+    def _quantize(self, inputs:torch.Tensor, weight:torch.Tensor, bias:torch.Tensor):
+        if self.hwq:
+            _, h, _ = weight.shape
+            qw = torch.zeros_like(weight, device=weight.device)
+            for i in range(h):
+                qw[:, i, :] = super()._quantize_weight(weight[:, i, :])
+            return self._quantize_activation(inputs), qw, bias
+        else:
+            return super()._quantize(inputs, weight, bias)
+
+def set_hwq(model: CAFIA_Transformer, hwq):
+    for m in model.modules():
+        if type(m) is SelfAttention:
+            qkv = m.query, m.key, m.value
+            for lg in qkv:
+                if type(lg) is QLinearGeneral:
+                    lg.hwq = hwq
 
 def set_mixed_precision(model:nn.Module, quantizable_idx, strategy):
     assert len(quantizable_idx) == len(strategy), \
