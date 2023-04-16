@@ -8,6 +8,7 @@ from torch.nn.modules.utils import _single, _pair, _triple
 import math
 from model import *
 
+
 class QModule(nn.Module):
     def __init__(self, w_bit=-1, a_bit=-1, half_wave=True):
         super(QModule, self).__init__()
@@ -20,7 +21,7 @@ class QModule(nn.Module):
         self._b_bit = 32
         self._half_wave = half_wave
 
-        self.init_range = 6.
+        self.init_range = 6.0
         self.activation_range = nn.Parameter(torch.Tensor([self.init_range]))
         self.weight_range = nn.Parameter(torch.Tensor([-1.0]), requires_grad=False)
 
@@ -103,7 +104,9 @@ class QModule(nn.Module):
         mx = np.abs(data).max()
         if np.isclose(mx, 0.0):
             return 0.0
-        hist, bin_edges = np.histogram(np.abs(data), bins='sqrt', range=(mn, mx), density=True)
+        hist, bin_edges = np.histogram(
+            np.abs(data), bins="sqrt", range=(mn, mx), density=True
+        )
         hist = hist / np.sum(hist)
         cumsum = np.cumsum(hist)
         n = pow(2, int(bitwidth) - 1)
@@ -120,7 +123,7 @@ class QModule(nn.Module):
             scaling_factor_tmp = threshold_tmp / (pow(2, bitwidth - 1) - 1)
             scaling_factor = np.concatenate((scaling_factor, [scaling_factor_tmp]))
             p = np.copy(cumsum)
-            p[(i - 1):] = 1
+            p[(i - 1) :] = 1
             x = np.linspace(0.0, 1.0, n)
             xp = np.linspace(0.0, 1.0, i)
             fp = p[:i]
@@ -143,33 +146,50 @@ class QModule(nn.Module):
         if self._quantized and self._a_bit > 0:
             if self._dynamic_activation:
                 ori_x = inputs
-                scaling_factor = inputs.abs().max().item() / (2. ** self._a_bit - 1.)
+                scaling_factor = inputs.abs().max().item() / (2.0**self._a_bit - 1.0)
                 x = ori_x.detach().clone()
                 x.div_(scaling_factor).round_().mul_(scaling_factor)
 
                 return STE.apply(ori_x, x)
             if self._calibrate:
                 if self._a_bit < 5:
-                    threshold = self._compute_threshold(inputs.data.cpu().numpy(), self._a_bit)
-                    estimate_activation_range = min(min(self.init_range, inputs.abs().max().item()), threshold)
+                    threshold = self._compute_threshold(
+                        inputs.data.cpu().numpy(), self._a_bit
+                    )
+                    estimate_activation_range = min(
+                        min(self.init_range, inputs.abs().max().item()), threshold
+                    )
                 else:
-                    estimate_activation_range = min(self.init_range, inputs.abs().max().item())
+                    estimate_activation_range = min(
+                        self.init_range, inputs.abs().max().item()
+                    )
                 # print('range:', estimate_activation_range, '  shape:', inputs.shape, '  inp_abs_max:', inputs.abs().max())
-                self.activation_range.data = torch.tensor([estimate_activation_range], device=inputs.device)
+                self.activation_range.data = torch.tensor(
+                    [estimate_activation_range], device=inputs.device
+                )
                 return inputs
 
             if self._trainable_activation_range:
                 if self._half_wave:
-                    ori_x = 0.5 * (inputs.abs() - (inputs - self.activation_range).abs() + self.activation_range)
+                    ori_x = 0.5 * (
+                        inputs.abs()
+                        - (inputs - self.activation_range).abs()
+                        + self.activation_range
+                    )
                 else:
-                    ori_x = 0.5 * ((-inputs - self.activation_range).abs() - (inputs - self.activation_range).abs())
+                    ori_x = 0.5 * (
+                        (-inputs - self.activation_range).abs()
+                        - (inputs - self.activation_range).abs()
+                    )
             else:
                 if self._half_wave:
                     ori_x = inputs.clamp(0.0, self.activation_range.item())
                 else:
-                    ori_x = inputs.clamp(-self.activation_range.item(), self.activation_range.item())
+                    ori_x = inputs.clamp(
+                        -self.activation_range.item(), self.activation_range.item()
+                    )
 
-            scaling_factor = self.activation_range.item() / (2. ** self._a_bit - 1.)
+            scaling_factor = self.activation_range.item() / (2.0**self._a_bit - 1.0)
             x = ori_x.detach().clone()
             x.div_(scaling_factor).round_().mul_(scaling_factor)
 
@@ -185,14 +205,20 @@ class QModule(nn.Module):
             weight = weight / weight.abs().max()
 
         if self._quantized and self._w_bit > 0:
-            threshold = self.weight_range.item() if not self._no_weight_trunc else weight.abs().max().item()
+            threshold = (
+                self.weight_range.item()
+                if not self._no_weight_trunc
+                else weight.abs().max().item()
+            )
             if threshold <= 0:
                 threshold = weight.abs().max().item()
                 self.weight_range.data[0] = threshold
 
             if self._calibrate:
                 if self._w_bit < 5:
-                    threshold = self._compute_threshold(weight.data.cpu().numpy(), self._w_bit)
+                    threshold = self._compute_threshold(
+                        weight.data.cpu().numpy(), self._w_bit
+                    )
                 else:
                     threshold = weight.abs().max().item()
                 self.weight_range.data[0] = threshold
@@ -200,7 +226,7 @@ class QModule(nn.Module):
 
             ori_w = weight
 
-            scaling_factor = threshold / (pow(2., self._w_bit - 1) - 1.)
+            scaling_factor = threshold / (pow(2.0, self._w_bit - 1) - 1.0)
             w = ori_w.clamp(-threshold, threshold)
             # w[w.abs() > threshold - threshold / 64.] = 0.
             w.div_(scaling_factor).round_().mul_(scaling_factor)
@@ -221,7 +247,7 @@ class QModule(nn.Module):
                 return bias
             ori_b = bias
             threshold = ori_b.data.max().item() + 0.00001
-            scaling_factor = threshold / (pow(2., self._b_bit - 1) - 1.)
+            scaling_factor = threshold / (pow(2.0, self._b_bit - 1) - 1.0)
             b = torch.clamp(ori_b.data, -threshold, threshold)
             b.div_(scaling_factor).round_().mul_(scaling_factor)
             # STE
@@ -243,9 +269,11 @@ class QModule(nn.Module):
         raise NotImplementedError
 
     def extra_repr(self):
-        return 'w_bit={}, a_bit={}, half_wave={}, tanh_weight={}'.format(
-            self.w_bit if self.w_bit > 0 else -1, self.a_bit if self.a_bit > 0 else -1,
-            self.half_wave, self._tanh_weight
+        return "w_bit={}, a_bit={}, half_wave={}, tanh_weight={}".format(
+            self.w_bit if self.w_bit > 0 else -1,
+            self.a_bit if self.a_bit > 0 else -1,
+            self.half_wave,
+            self._tanh_weight,
         )
 
 
@@ -261,7 +289,9 @@ class STE(torch.autograd.Function):
 
 
 class QLinear(QModule):
-    def __init__(self, in_features, out_features, bias=True, w_bit=-1, a_bit=-1, half_wave=True):
+    def __init__(
+        self, in_features, out_features, bias=True, w_bit=-1, a_bit=-1, half_wave=True
+    ):
         super(QLinear, self).__init__(w_bit=w_bit, a_bit=a_bit, half_wave=half_wave)
         self.in_features = in_features
         self.out_features = out_features
@@ -269,11 +299,13 @@ class QLinear(QModule):
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_features))
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
         self.reset_parameters()
 
     def forward(self, inputs):
-        inputs, weight, bias = self._quantize(inputs=inputs, weight=self.weight, bias=self.bias)
+        inputs, weight, bias = self._quantize(
+            inputs=inputs, weight=self.weight, bias=self.bias
+        )
         return F.linear(inputs, weight=weight, bias=bias)
 
     def reset_parameters(self):
@@ -284,28 +316,42 @@ class QLinear(QModule):
             nn.init.uniform_(self.bias, -bound, bound)
 
     def extra_repr(self):
-        s = 'in_features={}, out_features={}, bias={}'.format(
-            self.in_features, self.out_features, self.bias is not None)
+        s = "in_features={}, out_features={}, bias={}".format(
+            self.in_features, self.out_features, self.bias is not None
+        )
         if self.w_bit > 0 or self.a_bit > 0:
-            s += ', w_bit={w_bit}, a_bit={a_bit}'.format(w_bit=self.w_bit, a_bit=self.a_bit)
-            s += ', half wave' if self.half_wave else ', full wave'
+            s += ", w_bit={w_bit}, a_bit={a_bit}".format(
+                w_bit=self.w_bit, a_bit=self.a_bit
+            )
+            s += ", half wave" if self.half_wave else ", full wave"
         return s
 
 
 class QLinearGeneral(QModule):
-    def __init__(self, in_dim=(768,), feat_dim=(12, 64), hwq=False, w_bit=-1, a_bit=-1, half_wave=True):
-        super(QLinearGeneral, self).__init__(w_bit=w_bit, a_bit=a_bit, half_wave=half_wave)
+    def __init__(
+        self,
+        in_dim=(768,),
+        feat_dim=(12, 64),
+        hwq=False,
+        w_bit=-1,
+        a_bit=-1,
+        half_wave=True,
+    ):
+        super(QLinearGeneral, self).__init__(
+            w_bit=w_bit, a_bit=a_bit, half_wave=half_wave
+        )
 
         self.in_dim = in_dim
         self.feat_dim = feat_dim
         self.weight = nn.Parameter(torch.randn(*in_dim, *feat_dim))
         self.bias = nn.Parameter(torch.zeros(*feat_dim))
-        self.hwq = hwq #head wise
+        self.hwq = hwq  # head wise
         self.reset_parameters()
 
-
     def forward(self, inputs, dims=([2], [0])):
-        inputs, weight, bias = self._quantize(inputs=inputs, weight=self.weight, bias=self.bias)
+        inputs, weight, bias = self._quantize(
+            inputs=inputs, weight=self.weight, bias=self.bias
+        )
         return torch.tensordot(inputs, weight, dims=dims) + bias
 
     def reset_parameters(self):
@@ -316,23 +362,42 @@ class QLinearGeneral(QModule):
             nn.init.uniform_(self.bias, -bound, bound)
 
     def extra_repr(self):
-        s = 'in_dim={}, feat_dim={}'.format(
-            self.in_dim, self.feat_dim)
+        s = "in_dim={}, feat_dim={}".format(self.in_dim, self.feat_dim)
         if self.w_bit > 0 or self.a_bit > 0:
-            s += ', w_bit={w_bit}, a_bit={a_bit}'.format(w_bit=self.w_bit, a_bit=self.a_bit)
-            s += ', half wave' if self.half_wave else ', full wave'
-            s += ', head wise' if self.hwq else ', tensor wise'
+            s += ", w_bit={w_bit}, a_bit={a_bit}".format(
+                w_bit=self.w_bit, a_bit=self.a_bit
+            )
+            s += ", half wave" if self.half_wave else ", full wave"
+            s += ", head wise" if self.hwq else ", tensor wise"
         return s
 
-    def _quantize(self, inputs:torch.Tensor, weight:torch.Tensor, bias:torch.Tensor):
-        if self.hwq:
-            _, h, _ = weight.shape
-            qw = torch.zeros_like(weight, device=weight.device)
-            for i in range(h):
-                qw[:, i, :] = super()._quantize_weight(weight[:, i, :])
-            return self._quantize_activation(inputs), qw, bias
+    def _quantize_weight(self, weight: torch.Tensor):
+        if not self.hwq:
+            return super()._quantize_weight(weight)
+
+        if self._quantized and self._w_bit > 0:
+            ori_w = weight
+            threshold, _ = weight.abs().max(1)
+            scaling_factor = threshold / (pow(2.0, self._w_bit - 1) - 1.0)
+            w = (
+                ori_w.permute(1, 0, 2)
+                .contiguous()
+                .div_(scaling_factor)
+                .round_()
+                .mul_(scaling_factor)
+                .permute(1, 0, 2)
+            )
+
+            # STE
+            if self._fix_weight:
+                # w = w.detach()
+                return w.detach()
+            else:
+                # w = ori_w + w.detach() - ori_w.detach()
+                return STE.apply(ori_w, w)
         else:
-            return super()._quantize(inputs, weight, bias)
+            return weight
+
 
 def set_hwq(model: CAFIA_Transformer, hwq):
     for m in model.modules():
@@ -342,9 +407,11 @@ def set_hwq(model: CAFIA_Transformer, hwq):
                 if type(lg) is QLinearGeneral:
                     lg.hwq = hwq
 
-def set_mixed_precision(model:nn.Module, quantizable_idx, strategy):
-    assert len(quantizable_idx) == len(strategy), \
-        'You should provide the same number of bit setting as layer list for weight quantization!'
+
+def set_mixed_precision(model: nn.Module, quantizable_idx, strategy):
+    assert len(quantizable_idx) == len(
+        strategy
+    ), "You should provide the same number of bit setting as layer list for weight quantization!"
     quantize_layer_bit_dict = {n: b for n, b in zip(quantizable_idx, strategy)}
     for i, layer in enumerate(model.modules()):
         if i not in quantizable_idx:
@@ -352,6 +419,7 @@ def set_mixed_precision(model:nn.Module, quantizable_idx, strategy):
         else:
             layer.w_bit = quantize_layer_bit_dict[i][0]
             layer.a_bit = quantize_layer_bit_dict[i][1]
+
 
 def get_qmvit(args, path=None):
     args.linear = QLinear
@@ -363,18 +431,21 @@ def get_qmvit(args, path=None):
         load_weight_for_vit(qvit, path)
     return qvit
 
-def get_quantizable_idx(model:nn.Module):
+
+def get_quantizable_idx(model: nn.Module):
     idx = []
     for i, m in enumerate(model.modules()):
         if isinstance(m, QModule):
             idx.append(i)
     return idx
 
-def get_single_prec_quant_strategy(model:nn.Module, w=8, a=8):
+
+def get_single_prec_quant_strategy(model: nn.Module, w=8, a=8):
     idx = get_quantizable_idx(model)
     weight_strategy = [w] * len(idx)
     act_strategy = [a] * len(idx)
     return idx, mix_weight_act_strategy(weight_strategy, act_strategy)
+
 
 def mix_weight_act_strategy(w_s, a_s):
     s = []
