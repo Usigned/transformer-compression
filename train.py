@@ -3,21 +3,13 @@
 # @Author : Kaicheng Yang
 # @Time : 2022/01/26 11:03:11
 import os
-
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 from model import CAFIA_Transformer
-# from mmsa import build_mvit, get_masks_from_mmsa, freeze_model_but_mask, get_mask_val_from_masks
 from tqdm import tqdm
 import logging
 from scheduler import cosine_lr
-from data import get_cifar10_dataloader
-from torch.utils.tensorboard import SummaryWriter
-
 
 logging.basicConfig(level = logging.NOTSET)
  
@@ -53,7 +45,7 @@ def train_model(args, trainloader, testloader, device='cpu'):
             train_iter += 1
             logging.info('Epoch:%d batch_loss:%f', epoch, loss)
         
-        train_loss = loss / train_iter
+        train_loss /= train_iter
 
         #eval
         logging.info('**************************** start to evaluate *******************************')
@@ -90,3 +82,33 @@ def eval_model(model, dataloader, device='cpu'):
         
     acc = (correct / total).item()
     logging.info('Accuracy: %f', acc)
+
+
+def finetune(model:nn.Module, trainloader, device, epoches=1, save_dir=None, fname=None, **optim_kwargs):
+    
+    logging.info(f'**************************** start to finetune {epoches} turns*******************************')
+    model.train()
+    model = model.to(device)
+    
+    if 'lr' not in optim_kwargs:
+        optim_kwargs['lr'] = 1e-4
+    
+    optimizer = optim.Adam(model.parameters(), **optim_kwargs)
+    loss_fn = nn.CrossEntropyLoss()
+
+    for epoch in range(epoches):
+        for _, batch in enumerate(tqdm(trainloader, desc = "Iteration")):
+            optimizer.zero_grad()
+            batch = tuple(t.to(device) for t in batch)
+            batch_X, batch_Y = batch
+            outputs = model(batch_X)
+            loss = loss_fn(outputs, batch_Y)
+            loss.backward()
+            optimizer.step()
+            logging.info('Epoch:%d batch_loss:%f', epoch, loss)
+
+    if save_dir and fname:
+        if not os.path.exists(save_dir):
+            pass
+        torch.save(model.state_dict(), os.path.join(save_dir, fname+'.pt'))
+    return model

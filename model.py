@@ -6,9 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils import freeze_but_type, assert_model_all_freezed, assert_all_module_type_freezed, set_freeze_all
-
-
 class Linear(nn.Module):
     def __init__(self, in_features, out_features):
         super(Linear, self).__init__()
@@ -241,5 +238,4 @@ class CAFIA_Transformer(nn.Module):
 
 
 def load_weight_for_vit(model: CAFIA_Transformer, path: str):
-    model.load_state_dict(torch.load(path, map_location=torch.device('cpu')), strict=False)
-    return model
+    return model.load_state_dict(torch.load(path, map_location=torch.device('cpu')), strict=False)
