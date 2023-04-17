@@ -28,7 +28,8 @@ if __name__ == '__main__':
     test_loader = get_cifar10_dataloader(train=False)
 
     W = [2, 3, 4, 5, 6, 7, 8]
-    A = [4, 8]
+    A = [-1]
+    # A = [4, 8]
     Hwq = [True, False]
 
     with open(res_path, 'w') as f:
@@ -37,9 +38,9 @@ if __name__ == '__main__':
                 for hwq in Hwq:
                     vit = get_vit(args.QVIT, path)
                     accur = test_case(vit, w, a, hwq=hwq, device=device, need_finetune=False)
-                    f.write(f'w: {w}, a: {a}, hwq: {hwq}, without finetune: {accur}')
+                    f.write(f'w: {w}, a: {a}, hwq: {hwq}, without finetune: {accur}\n')
                     f.flush()
                     if accur < 0.9:
                         accur = test_case(vit, w, a, hwq=hwq, device=device, need_finetune=True, trainloader=train_loader)
-                        f.write(f'w: {w}, a: {a}, hwq: {hwq}, finetuned: {accur}')
+                        f.write(f'w: {w}, a: {a}, hwq: {hwq}, finetuned: {accur}\n')
                         f.flush()
