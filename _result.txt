@@ -1,0 +1,71 @@
+w: 8, a: 8, hwq: True, without finetune: 0.9855999946594238
+w: 8, a: 8, hwq: False, without finetune: 0.9851999878883362
+w: 7, a: 8, hwq: True, without finetune: 0.9837999939918518
+w: 7, a: 8, hwq: False, without finetune: 0.9835000038146973
+w: 6, a: 8, hwq: True, without finetune: 0.980400025844574
+w: 6, a: 8, hwq: False, without finetune: 0.9805999994277954
+w: 5, a: 8, hwq: True, without finetune: 0.5120999813079834
+w: 5, a: 8, hwq: True, finetuned: 0.9635000228881836
+w: 5, a: 8, hwq: False, without finetune: 0.49309998750686646
+w: 5, a: 8, hwq: False, finetuned: 0.967199981212616
+w: 4, a: 8, hwq: True, without finetune: 0.10939999669790268
+w: 4, a: 8, hwq: True, finetuned: 0.6290000081062317
+w: 4, a: 8, hwq: False, without finetune: 0.1014999970793724
+w: 4, a: 8, hwq: False, finetuned: 0.5394999980926514
+w: 3, a: 8, hwq: True, without finetune: 0.11330000311136246
+w: 3, a: 8, hwq: True, finetuned: 0.5382000207901001
+w: 3, a: 8, hwq: False, without finetune: 0.16949999332427979
+w: 3, a: 8, hwq: False, finetuned: 0.4749999940395355
+w: 2, a: 8, hwq: True, without finetune: 0.1014999970793724
+w: 2, a: 8, hwq: True, finetuned: 0.574999988079071
+w: 2, a: 8, hwq: False, without finetune: 0.06909999996423721
+w: 2, a: 8, hwq: False, finetuned: 0.32499998807907104
+w: 8, a: 4, hwq: True, without finetune: 0.6697999835014343
+w: 8, a: 4, hwq: True, finetuned: 0.9629999995231628
+w: 8, a: 4, hwq: False, without finetune: 0.666700005531311
+w: 8, a: 4, hwq: False, finetuned: 0.9606999754905701
+w: 7, a: 4, hwq: True, without finetune: 0.651199996471405
+w: 7, a: 4, hwq: True, finetuned: 0.9610999822616577
+w: 7, a: 4, hwq: False, without finetune: 0.6506999731063843
+w: 7, a: 4, hwq: False, finetuned: 0.9610999822616577
+w: 6, a: 4, hwq: True, without finetune: 0.5407000184059143
+w: 6, a: 4, hwq: True, finetuned: 0.9498999714851379
+w: 6, a: 4, hwq: False, without finetune: 0.5335000157356262
+w: 6, a: 4, hwq: False, finetuned: 0.9606999754905701
+w: 5, a: 4, hwq: True, without finetune: 0.15039999783039093
+w: 5, a: 4, hwq: True, finetuned: 0.9478999972343445
+w: 5, a: 4, hwq: False, without finetune: 0.1468999981880188
+w: 5, a: 4, hwq: False, finetuned: 0.9498999714851379
+w: 4, a: 4, hwq: True, without finetune: 0.10350000113248825
+w: 4, a: 4, hwq: True, finetuned: 0.6589000225067139
+w: 4, a: 4, hwq: False, without finetune: 0.11940000206232071
+w: 4, a: 4, hwq: False, finetuned: 0.5573999881744385
+w: 3, a: 4, hwq: True, without finetune: 0.11469999700784683
+w: 3, a: 4, hwq: True, finetuned: 0.48649999499320984
+w: 3, a: 4, hwq: False, without finetune: 0.1290999948978424
+w: 3, a: 4, hwq: False, finetuned: 0.5051000118255615
+w: 2, a: 4, hwq: True, without finetune: 0.0934000015258789
+w: 2, a: 4, hwq: True, finetuned: 0.5461999773979187
+w: 2, a: 4, hwq: False, without finetune: 0.08919999748468399
+w: 2, a: 4, hwq: False, finetuned: 0.2962000072002411
+w: 8, a: -1, hwq: True, without finetune: 0.9860000014305115
+w: 8, a: -1, hwq: False, without finetune: 0.9855999946594238
+w: 7, a: -1, hwq: True, without finetune: 0.9842000007629395
+w: 7, a: -1, hwq: False, without finetune: 0.9843000173568726
+w: 6, a: -1, hwq: True, without finetune: 0.9807000160217285
+w: 6, a: -1, hwq: False, without finetune: 0.98089998960495
+w: 5, a: -1, hwq: True, without finetune: 0.5271999835968018
+w: 5, a: -1, hwq: True, finetuned: 0.9625999927520752
+w: 5, a: -1, hwq: False, without finetune: 0.5076000094413757
+w: 5, a: -1, hwq: False, finetuned: 0.9635000228881836
+w: 4, a: -1, hwq: True, without finetune: 0.11190000176429749
+w: 4, a: -1, hwq: True, finetuned: 0.5889000296592712
+w: 4, a: -1, hwq: False, without finetune: 0.10360000282526016
+w: 4, a: -1, hwq: False, finetuned: 0.5806999802589417
+w: 3, a: -1, hwq: True, without finetune: 0.11400000005960464
+w: 3, a: -1, hwq: True, finetuned: 0.47029998898506165
+w: 3, a: -1, hwq: False, without finetune: 0.1688999980688095
+w: 3, a: -1, hwq: False, finetuned: 0.517300009727478
+w: 2, a: -1, hwq: True, without finetune: 0.10199999809265137
+w: 2, a: -1, hwq: True, finetuned: 0.5740000009536743
+w: 2, a: -1, hwq: False, without finetune: 0.07000000029802322
