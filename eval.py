@@ -38,9 +38,9 @@ if __name__ == '__main__':
                 for hwq in Hwq:
                     vit = get_vit(args.QVIT, path)
                     accur = test_case(vit, w, a, hwq=hwq, device=device, need_finetune=False)
-                    f.write(f'w: {w}, a: {a}, hwq: {hwq}, without finetune: {accur}\n')
+                    f.write(f'w: {w}, a: {a}, hwq: {hwq}, without finetune, {accur}\n')
                     f.flush()
                     if accur < 0.9:
                         accur = test_case(vit, w, a, hwq=hwq, device=device, need_finetune=True, trainloader=train_loader)
-                        f.write(f'w: {w}, a: {a}, hwq: {hwq}, finetuned: {accur}\n')
+                        f.write(f'w: {w}, a: {a}, hwq: {hwq}, finetuned, {accur}\n')
                         f.flush()
