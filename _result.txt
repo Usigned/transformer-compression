@@ -69,3 +69,4 @@ w: 3, a: -1, hwq: False, finetuned: 0.517300009727478
 w: 2, a: -1, hwq: True, without finetune: 0.10199999809265137
 w: 2, a: -1, hwq: True, finetuned: 0.5740000009536743
 w: 2, a: -1, hwq: False, without finetune: 0.07000000029802322
+w: 2, a: -1, hwq: False, finetuned: 0.3151000142097473
