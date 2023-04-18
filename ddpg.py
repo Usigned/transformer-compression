@@ -9,6 +9,9 @@ from collections import deque, namedtuple
 from random import sample
 import args
 from memory import SequentialMemory
+import wandb
+
+# wandb.init()
 
 Experience = namedtuple(
     'Experience', 'state0, action, reward, state1, terminal1')
@@ -176,6 +179,9 @@ class DDPG(object):
         policy_loss.backward()
         self.actor_optim.step()
 
+        for a, r, s, q in zip(action_batch, target_q_batch, state_batch, q_batch):
+            print(f'''s:{s}, a: {a}, r: {r.data}, q: {q.data}''')
+
         # Target update
         self.soft_update(self.actor_target, self.actor)
         self.soft_update(self.critic_target, self.critic)
@@ -210,6 +216,7 @@ class DDPG(object):
         action = to_numpy(self.actor(
             to_tensor(np.array(s_t).reshape(1, -1), device=self.device))).squeeze(0)
         delta = self.init_delta * (self.delta_decay ** (episode - self.warmup))
+        # delta = self.init_delta
         # action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
         # from IPython import embed; embed() # TODO eable decay_epsilon=True
         action = sample_from_truncated_normal_distribution(
@@ -335,4 +342,4 @@ class VarBatchSizeMemory:
 
 
 if __name__ == '__main__':
-    DDPG(1, 1, args.TRAIN_AGENT, 'cpu')
+    agent = DDPG(7, 1, args.TRAIN_AGENT, 'cpu')

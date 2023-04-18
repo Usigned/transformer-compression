@@ -105,14 +105,14 @@ TRAIN_AGENT = Namespace(
         'init_delta': 0.5,
         'delta_decay': 0.99,
         'epsilon': 5000, 
-        'warmup': 60,
+        'warmup': 20,
         'discount': 1.,
         'hidden1': 300,
         'hidden2': 300,
-        'lr_a': 1e-4,
+        'lr_a': 1e-3,
         'lr_c': 1e-3,
         'rmsize': 128,
-        'n_update': 1,
+        'n_update': 3,
         'window_length': 1,
         'bsize': 64
     }

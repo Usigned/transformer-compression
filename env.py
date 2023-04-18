@@ -174,7 +174,8 @@ class Env:
         return self.prune_states[self.cur_idx, :].copy() if norm else self._prune_states[self.cur_idx, :].copy()
 
     def test_reward(self):
-        return -(sum(self.quant_strategy.strategy) + sum(self.prune_strategy.strategy))
+        s = -abs(5 - sum(self.quant_strategy.strategy)/len(self.quant_strategy))
+        return s
 
     def reward(self):
         acc = eval_model(finetune(self.model, self.trainloader,
@@ -338,6 +339,56 @@ class Env:
     @property
     def strategy(self):
         return self.prune_strategy.strategy + self.quant_strategy.strategy
+
+class DemoStepEnv:
+    def __init__(self):
+        self.len = 10
+        self.list = [8.]*self.len
+        self.cur_idx = 0
+        
+    def step(self, action):
+        action = self._action_wall(action)
+        
+        self.list[self.cur_idx] = action
+
+        done = False
+        reward = 0
+        info = {'info': f"{self.cur_idx} take action {action}"}
+
+        if self.is_final():
+            done = True
+            reward = self.reward()
+            info['info'] += f'\n{self.list}'
+
+        if not self.is_final():
+            self.cur_idx += 1
+        else:
+            self.cur_idx =0
+
+        state = np.array([self.cur_idx]+ self.list, dtype='float')
+        return state, reward, done, info
+
+    def reset(self):
+        self.cur_idx = 0
+        return np.array([self.cur_idx]+ self.list)
+
+    def reward(self):
+        target = np.array([5.]*self.len, dtype='float')
+        return -sum(abs(self.list - target))
+
+    def is_final(self):
+        return self.cur_idx == self.len-1
+
+    def _action_wall(self, action):
+        action = float(action)
+        lbound, rbound = 4 - 0.5, 8 + 0.5
+        action = (rbound - lbound) * action + lbound
+        action = int(np.round(action, 0))
+        return action
+
+    @property
+    def strategy(self):
+        return self.list
 
 if __name__ == '__main__':
     path = r'D:\d-storage\output\vit\0.9853000044822693.pt'

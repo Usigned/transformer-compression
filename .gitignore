@@ -147,3 +147,5 @@ data
 kernel_meta_*
 
 cache
+
+wandb

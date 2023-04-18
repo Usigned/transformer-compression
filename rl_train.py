@@ -1,12 +1,15 @@
 import math
 from data import get_cifar10_dataloader
 from ddpg import DDPG
-from env import Env
+from env import Env, DemoStepEnv
 from copy import deepcopy
 import args
 from model import get_vit
+import torch
+# import wandb
 
-def train_agent(num_episode, env:Env, agent:DDPG, args, output=None):
+# wandb.init()
+def train_agent(num_episode, env:DemoStepEnv, agent:DDPG, args, output=None):
     
     best_reward = -math.inf
     best_policy = []
@@ -29,7 +32,7 @@ def train_agent(num_episode, env:Env, agent:DDPG, args, output=None):
             action = agent.random_action()
         else:
             action = agent.select_action(state, episode=episode)
-            # print(action)
+            # wandb.log({'action': action})
 
         state2, reward, done, info = env.step(action)
         state2 = deepcopy(state2)
@@ -48,7 +51,6 @@ def train_agent(num_episode, env:Env, agent:DDPG, args, output=None):
         state = deepcopy(state2)
 
         if done:  # end of episode
-            print(info['info'])
             final_reward = T[-1][0]
             # agent observe and update policy
             for i, (r_t, s_t, s_t1, a_t, done) in enumerate(T):
@@ -70,16 +72,39 @@ def train_agent(num_episode, env:Env, agent:DDPG, args, output=None):
 
     return best_policy, best_reward
 
-if __name__ == '__main__':
-    path = r'D:\d-storage\output\vit\0.9853000044822693.pt'
-    trainloader = get_cifar10_dataloader()
-    testloader = get_cifar10_dataloader(train=False)
-    env = Env(get_vit(args.QVIT), path, trainloader,
-              testloader, 'cpu', args.ENV)
+def eval_agent(env:DemoStepEnv, agent:DDPG):
+    agent.is_training = False
+    state = None
+    done = False
+    info = {}
 
-    nb_states = 7
+    for i in range(2):
+        while not done:
+            if state is None:
+                state = deepcopy(env.reset())
+                agent.reset(state)
+            action = agent.select_action(state, episode=500)
+            print(action, agent.critic((torch.tensor([state], dtype=torch.float), torch.tensor([action], dtype=torch.float))))
+            state, reward, done, info = env.step(action)
+
+
+        print(info['info'])
+
+if __name__ == '__main__':
+    # path = r'/Users/qing/Downloads/0.9853000044822693.pt'
+    # trainloader = get_cifar10_dataloader()
+    # testloader = get_cifar10_dataloader(train=False)
+    # env = Env(get_vit(args.QVIT), path, trainloader,
+    #           testloader, 'cpu', args.ENV)
+
+    env = DemoStepEnv()
+    nb_states = env.len+1
     nb_actions = 1
-    args.TRAIN_AGENT.rmsize *= len(env.strategy)
     agent = DDPG(nb_states, nb_actions, args.TRAIN_AGENT, 'cpu')
-    p, r = train_agent(500, env, agent, args.TRAIN_AGENT)
+    p, r = train_agent(300, env, agent, args.TRAIN_AGENT)
+    agent.save_model('.')
     print(p, r)
+
+    # agent.load_weights('.')
+    # eval_agent(env, agent)
+    # print(env._action_wall(agent.actor(torch.tensor([1.]*7))))
