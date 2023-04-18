@@ -13,29 +13,28 @@ from data import get_cifar10_dataloader
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
 
+
 class Stage(Enum):
     Quant = 0
     Prune = 1
 
 
 class Strategy:
-    def __init__(self, target_len:int) -> None:
+    def __init__(self, target_len: int, val) -> None:
         self.target_len = target_len
         self.cur_strategy = []
+        self.fill(val)
 
     @property
     def strategy(self):
-        assert len(self) == self.target_len
+        assert len(self) == self.target_len, f"len: {len(self)}, target: {self.target_len}, val: {self.cur_strategy}"
         return self.cur_strategy
 
     def __len__(self):
         return len(self.cur_strategy)
 
-    def append(self, val):
-        if not self.is_full:
-            self.cur_strategy.append(val)
-            return True
-        return False
+    def set(self, idx, val):
+        self.cur_strategy[idx] = val
 
     @property
     def is_full(self):
@@ -47,10 +46,6 @@ class Strategy:
     def fill(self, val):
         self.cur_strategy += [val] * (self.target_len-len(self))
         return self
-
-    def set(self, strategy:list):
-        assert len(strategy) == self.target_len
-        self.cur_strategy = strategy
 
 class Env:
     def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, device, args) -> None:
@@ -73,42 +68,43 @@ class Env:
 
         # prune heads
         self.max_heads = args.max_heads
-        self.min_heads = args.min_heads 
-        self.head_dim = args.head_dim 
-        
+        self.min_heads = args.min_heads
+        self.head_dim = args.head_dim
+
         self.device = device
         self.ori_acc = args.ori_acc
         self.float_bit = 8
-
 
         self._build_state()
         # runtime
         self.cur_idx = 0
         self.best_reward = -math.inf
-        self.quant_strategy = Strategy(len(self.quant_idx)).fill(self.max_bit)
-        self.prune_strategy = Strategy(len(self.prune_idx)).fill(self.max_heads)
+        self.quant_strategy = Strategy(len(self.quant_idx), self.max_bit)
+        self.prune_strategy = Strategy(len(self.prune_idx), self.max_heads)
         self.stage = Stage.Quant
 
-
     def _apply_strategy(self):
-        self._apply_quant()
+        # self._apply_quant()
+        self.quant_strategy.strategy
+        self.prune_strategy.strategy
 
     def _apply_quant(self):
-        set_mixed_precision(self.model, self.quant_idx, mix_weight_act_strategy(self.quant_strategy.strategy, [self.a_bit] * len(self.quant_strategy)))
+        set_mixed_precision(self.model, self.quant_idx, mix_weight_act_strategy(
+            self.quant_strategy.strategy, [self.a_bit] * len(self.quant_strategy)))
 
     def step(self, action):
         action = self._action_wall(action)
 
         if self.stage is Stage.Quant:
-            self.quant_strategy.append(action)
+            self.quant_strategy.set(self.cur_idx, action)
         else:
-            self.prune_strategy.append(action)
+            self.prune_strategy.set(self.cur_idx, action)
 
         info_set = {'info': f"{self.stage.name} take action {action}"}
 
-        if self._is_batch_end():     
+        if self._is_batch_end():
             self._adjust_strategy()
-                    
+
             self._update_states()
             self._apply_strategy()
             # reward = self.reward()
@@ -126,7 +122,7 @@ class Env:
         done = False
 
         return next_state, reward, done, info_set
-    
+
     def show_state(self, norm=True):
         S = []
         if norm:
@@ -142,7 +138,7 @@ class Env:
                 # for r in rest:
                 #     s += f'{int(r)}'
                 for d in states[i]:
-                    s += f'{int(d)}, ' if not norm else f'{d}, ' 
+                    s += f'{int(d)}, ' if not norm else f'{d}, '
                 s += '\n'
             s += '==========================================\n'
         print(s)
@@ -181,7 +177,8 @@ class Env:
         return -(sum(self.quant_strategy.strategy) + sum(self.prune_strategy.strategy))
 
     def reward(self):
-        acc = eval_model(finetune(self.model, self.trainloader, self.device), self.testloader, self.device)
+        acc = eval_model(finetune(self.model, self.trainloader,
+                         self.device), self.testloader, self.device)
         return (acc - self.ori_acc) * 0.1
 
     def _adjust_strategy(self):
@@ -190,18 +187,14 @@ class Env:
     def reset(self):
         self.load_weight()
         self.cur_idx = 0
-        if self.stage is Stage.Prune:
-            self.stage = Stage.Quant
-            self.quant_strategy = Strategy(len(self.quant_idx))
-        else:
-            self.stage = Stage.Prune
-            self.prune_strategy = Strategy(len(self.prune_idx))
+        self.stage = Stage.Quant if self.stage is Stage.Prune else Stage.Prune
         return self._get_next_states()
 
     def _action_wall(self, action):
         action = float(action)
         if self.stage is Stage.Quant:
-            lbound, rbound = self.min_bit - 0.5, self.max_bit + 0.5  # same stride length for each bit
+            lbound, rbound = self.min_bit - 0.5, self.max_bit + \
+                0.5  # same stride length for each bit
         else:
             lbound, rbound = self.min_heads - 0.5, self.max_heads + 0.5
         action = (rbound - lbound) * action + lbound
@@ -218,7 +211,7 @@ class Env:
             return self.cur_idx == len(self.prune_idx)-1
 
     def _build_state(self):
-        prune_idx= []
+        prune_idx = []
         quant_idx = []
 
         prune_states = []
@@ -234,8 +227,8 @@ class Env:
                 this_state.append([m.heads])
                 this_state.append([in_dim])
                 this_state.append([out_dim])
-                this_state.append([self.float_bit]) #prec1
-                this_state.append([self.float_bit]) #prec2
+                this_state.append([self.float_bit])  # prec1
+                this_state.append([self.float_bit])  # prec2
                 prune_states.append(np.hstack(this_state))
                 i += 1
                 prune_idx.append(idx)
@@ -247,8 +240,8 @@ class Env:
                     this_state.append([1])
                     this_state.append([in_dim])
                     this_state.append([out_dim])
-                    this_state.append([self.float_bit]) #prec1
-                    this_state.append([self.float_bit]) #prec2
+                    this_state.append([self.float_bit])  # prec1
+                    this_state.append([self.float_bit])  # prec2
                     quant_states.append(np.hstack(this_state))
                     j += 1
                     quant_idx.append(idx)
@@ -261,48 +254,56 @@ class Env:
                 this_state.append([1])
                 this_state.append([in_dim])
                 this_state.append([out_dim])
-                this_state.append([self.float_bit]) #prec1
-                this_state.append([self.float_bit]) #prec2
+                this_state.append([self.float_bit])  # prec1
+                this_state.append([self.float_bit])  # prec2
                 quant_states.append(np.hstack(this_state))
                 j += 1
                 quant_idx.append(idx)
 
-
         self._quant_states = np.array(quant_states, 'float')
         self._prune_states = np.array(prune_states, 'float')
 
-
-        print('=> shape of quant state (n_layer * n_dim): {}'.format(self._quant_states.shape))
-        print('=> shape of prune state (n_layer * n_dim): {}'.format(self._prune_states.shape))
+        print(
+            '=> shape of quant state (n_layer * n_dim): {}'.format(self._quant_states.shape))
+        print(
+            '=> shape of prune state (n_layer * n_dim): {}'.format(self._prune_states.shape))
 
         # quant state scale
         _qmin = [1, 0, 1]
-        _qmin.append(min(min(self._quant_states[:, 3]), self.min_heads*self.head_dim))
-        _qmin.append(min(min(self._quant_states[:, 4]), self.min_heads*self.head_dim))
+        _qmin.append(
+            min(min(self._quant_states[:, 3]), self.min_heads*self.head_dim))
+        _qmin.append(
+            min(min(self._quant_states[:, 4]), self.min_heads*self.head_dim))
         _qmin.append(self.min_bit)
         _qmin.append(self.min_bit)
 
         _qmax = [1, max(self._quant_states[:, 1]), 1]
-        _qmax.append(max(max(self._quant_states[:, 3]), self.max_heads*self.head_dim))
-        _qmax.append(max(max(self._quant_states[:, 4]), self.max_heads*self.head_dim))
+        _qmax.append(
+            max(max(self._quant_states[:, 3]), self.max_heads*self.head_dim))
+        _qmax.append(
+            max(max(self._quant_states[:, 4]), self.max_heads*self.head_dim))
         _qmax.append(self.max_bit)
         _qmax.append(self.max_bit)
-        
+
         # prune state scale
         _pmin = [1, 0, self.min_heads]
-        _pmin.append(min(min(self._prune_states[:, 3]), self.min_heads*self.head_dim))
-        _pmin.append(min(min(self._prune_states[:, 4]), self.min_heads*self.head_dim))
+        _pmin.append(
+            min(min(self._prune_states[:, 3]), self.min_heads*self.head_dim))
+        _pmin.append(
+            min(min(self._prune_states[:, 4]), self.min_heads*self.head_dim))
         _pmin.append(self.min_bit)
         _pmin.append(self.min_bit)
 
         _pmax = [1, max(self._prune_states[:, 1]), self.max_heads]
-        _pmax.append(max(max(self._prune_states[:, 3]), self.max_heads*self.head_dim))
-        _pmax.append(max(max(self._prune_states[:, 4]), self.max_heads*self.head_dim))
+        _pmax.append(
+            max(max(self._prune_states[:, 3]), self.max_heads*self.head_dim))
+        _pmax.append(
+            max(max(self._prune_states[:, 4]), self.max_heads*self.head_dim))
         _pmax.append(self.max_bit)
         _pmax.append(self.max_bit)
 
         self._qmax, self._qmin, self._pmax, self._pmin = _qmax, _qmin, _pmax, _pmin
-        
+
         self.quant_idx = quant_idx
         self.prune_idx = prune_idx
 
@@ -313,9 +314,9 @@ class Env:
             fmin = self._qmin[i]
             fmax = self._qmax[i]
             if fmax - fmin > 0:
-                states[:, i] = (states[:, i] - fmin) / (fmax - fmin)
+                states[:, i] = (states[:, i] - fmin) / (fmax - fmin) # type: ignore
         return states
-    
+
     @property
     def prune_states(self):
         states = self._prune_states.copy()
@@ -326,17 +327,21 @@ class Env:
                 states[:, i] = (states[:, i] - fmin) / (fmax - fmin)
         return states
 
-
     def _reset_everything(self):
         self._build_state()
-        self.quant_strategy = Strategy(len(self.quant_idx)).fill(self.max_bit)
-        self.prune_strategy = Strategy(len(self.prune_idx)).fill(self.max_heads)
+        self.quant_strategy = Strategy(len(self.quant_idx), self.max_bit)
+        self.prune_strategy = Strategy(
+            len(self.prune_idx), self.max_heads)
         self.stage = Stage.Quant
         return self.reset()
 
+    @property
+    def strategy(self):
+        return self.prune_strategy.strategy + self.quant_strategy.strategy
 
 if __name__ == '__main__':
     path = r'D:\d-storage\output\vit\0.9853000044822693.pt'
     trainloader = get_cifar10_dataloader()
     testloader = get_cifar10_dataloader(train=False)
-    env = Env(get_vit(args.QVIT), path, trainloader, testloader, 'cpu', args.ENV)
+    env = Env(get_vit(args.QVIT), path, trainloader,
+              testloader, 'cpu', args.ENV)

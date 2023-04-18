@@ -1,4 +1,5 @@
 from collections import deque
+import math
 import torch
 import torch.nn as nn
 import numpy as np
@@ -6,6 +7,8 @@ from torch.optim import Adam
 from torch.autograd import Variable
 from collections import deque, namedtuple
 from random import sample
+import args
+from memory import SequentialMemory
 
 Experience = namedtuple(
     'Experience', 'state0, action, reward, state1, terminal1')
@@ -73,8 +76,7 @@ class DDPG(object):
         # Create Actor and Critic Network
         net_cfg = {
             'hidden1': args.hidden1,
-            'hidden2': args.hidden2,
-            'init_w': args.init_w
+            'hidden2': args.hidden2        
         }
         self.actor = Actor(self.nb_states, self.nb_actions, **net_cfg)
         self.actor_target = Actor(self.nb_states, self.nb_actions, **net_cfg)
@@ -89,10 +91,10 @@ class DDPG(object):
         self.hard_update(self.critic_target, self.critic)
 
         # Create replay buffer
-        self.memory = VarBatchSizeMemory(limit=args.rmsize)
+        self.memory = SequentialMemory(limit=args.rmsize, window_length=args.window_length)
 
         # Hyper-parameters
-        # self.batch_size = args.bsize
+        self.batch_size = args.bsize
         self.tau = args.tau
         self.discount = args.discount
         self.depsilon = 1.0 / args.epsilon
@@ -126,7 +128,7 @@ class DDPG(object):
     def update_policy(self):
         # Sample batch
         state_batch, action_batch, reward_batch, \
-            next_state_batch, terminal_batch = self.memory.sample_and_split()
+            next_state_batch, terminal_batch = self.memory.sample_and_split(self.batch_size)
 
         # normalize the reward
         batch_mean_reward = np.mean(reward_batch)
@@ -196,8 +198,7 @@ class DDPG(object):
 
     def observe(self, r_t, s_t, s_t1, a_t, done):
         if self.is_training:
-            self.memory.append(s_t, a_t, r_t, s_t1, done)  # save to memory
-            # self.s_t = s_t1
+            self.memory.append(s_t, a_t, r_t, done)  # save to memory
 
     def random_action(self):
         action = np.random.uniform(self.lbound, self.rbound, self.nb_actions)
@@ -271,6 +272,7 @@ class VarBatchSizeMemory:
         # batch_size, state0, action, reward, state1, terminal
         self.deque = deque([], limit)
         self.cur_batch = []
+        self.best = -math.inf
 
     def append(self, state0, action, reward, state1, terminal, training=True):
         if training:
@@ -279,7 +281,10 @@ class VarBatchSizeMemory:
 
     def make_batch(self):
         if len(self.cur_batch) != 0:
-            self.deque.append(self.cur_batch)
+            R = self.cur_batch[-1][2]
+            if R > self.best:
+                self.deque.append(self.cur_batch)
+                self.best = R
             self.clear_cur_batch()
             return
         raise RuntimeError('Empty Cur Batch')
@@ -327,3 +332,7 @@ class VarBatchSizeMemory:
     @property
     def num_batches(self):
         return len(self.deque)
+
+
+if __name__ == '__main__':
+    DDPG(1, 1, args.TRAIN_AGENT, 'cpu')

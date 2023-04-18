@@ -97,3 +97,23 @@ ENV = Namespace(
         'head_dim': 64
     }
 )
+
+
+TRAIN_AGENT = Namespace(
+    **{
+        'tau': 0.01,
+        'init_delta': 0.5,
+        'delta_decay': 0.99,
+        'epsilon': 5000, 
+        'warmup': 60,
+        'discount': 1.,
+        'hidden1': 300,
+        'hidden2': 300,
+        'lr_a': 1e-4,
+        'lr_c': 1e-3,
+        'rmsize': 128,
+        'n_update': 1,
+        'window_length': 1,
+        'bsize': 64
+    }
+)
