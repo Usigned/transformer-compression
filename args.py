@@ -81,3 +81,19 @@ QVIT = Namespace(
         "linear_general": QLinearGeneral,
     }
 )
+
+
+ENV = Namespace(
+    **{
+        "ori_acc": 0.9853000044822693,
+        "lat_b": 1000.,
+        "e_b": 1000.,
+        "mem_b": 1000.,
+        "max_bit": 8,
+        "min_bit": 4,
+        "a_bit": 8,
+        "max_heads": 12,
+        "min_heads": 3,
+        'head_dim': 64
+    }
+)
