@@ -116,3 +116,5 @@ class DDPG:
 
         self.soft_update(self.actor, self.target_actor)  # 软更新策略网络
         self.soft_update(self.critic, self.target_critic)  # 软更新价值网络
+
+        return critic_loss.detach(), actor_loss.detach()
