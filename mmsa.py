@@ -84,17 +84,17 @@ def set_mask_prune_rate(model:CAFIA_Transformer, prune_rate):
             m.prune_rate=prune_rate
 
 class MaskedSelfAttention(nn.Module):
-    def __init__(self, in_dim, heads=8, dropout_rate=0.1, prune_rate=.25):
+    def __init__(self, in_dim, heads=8, dropout_rate=0.1, prune_rate=.25, linear_general=LinearGeneral):
         super(MaskedSelfAttention, self).__init__()
         self.heads = heads
         self.head_dim = in_dim // heads
         self.scale = self.head_dim ** 0.5
         self.prune_rate = prune_rate
 
-        self.query = LinearGeneral((in_dim,), (self.heads, self.head_dim))
-        self.key = LinearGeneral((in_dim,), (self.heads, self.head_dim))
-        self.value = LinearGeneral((in_dim,), (self.heads, self.head_dim))
-        self.out = LinearGeneral((self.heads, self.head_dim), (in_dim,))
+        self.query = linear_general((in_dim,), (self.heads, self.head_dim))
+        self.key = linear_general((in_dim,), (self.heads, self.head_dim))
+        self.value = linear_general((in_dim,), (self.heads, self.head_dim))
+        self.out = linear_general((self.heads, self.head_dim), (in_dim,))
 
         self.mask = LearnableMask(self.heads, self.prune_rate)
 

@@ -1,7 +1,7 @@
 from model import *
 from quant_utils import *
 from argparse import Namespace
-
+from mmsa import MaskedSelfAttention
 
 ALL = Namespace(
     **{
@@ -75,6 +75,24 @@ QVIT = Namespace(
         "num_heads": 12,
         "num_layers": 12,
         "attn_type": SelfAttention,
+        "attn_dropout_rate": 0.0,
+        "dropout_rate": 0.1,
+        "linear": QLinear,
+        "linear_general": QLinearGeneral,
+    }
+)
+
+
+MQVIT = Namespace(
+    **{
+        "image_size": 224,
+        "num_classes": 10,
+        "patch_size": 16,
+        "emb_dim": 768,
+        "mlp_dim": 3072,
+        "num_heads": 12,
+        "num_layers": 12,
+        "attn_type": MaskedSelfAttention,
         "attn_dropout_rate": 0.0,
         "dropout_rate": 0.1,
         "linear": QLinear,

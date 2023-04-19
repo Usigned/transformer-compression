@@ -201,3 +201,14 @@ def train_mvit(args, trainloader=None, model=None, freeze_w=False, device='cpu',
                 f'**************************** save model to {output_path} *******************************')
             torch.save(model.state_dict(), output_path)
     return model
+
+
+if  __name__ == '__main__':
+    import args
+    path = '/Users/qing/Downloads/pat-0.5.pt'
+    mvit = build_mvit(args.MQVIT)
+    print(mvit.load_state_dict(torch.load(path), strict=False))
+    
+    testloader = get_cifar10_dataloader(train=False)
+
+    print(eval_model(mvit, testloader, 'cpu'))
