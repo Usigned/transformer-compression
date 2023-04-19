@@ -1,0 +1,5 @@
+tmp sparsity-0.75 accur(no finetune): 0.9578999876976013
+tmp sparsity-0.5 accur(no finetune): 0.5626000165939331
+tmp sparsity-0.5 accur(finetuned): 0.9448999762535095
+tmp sparsity-0.25 accur(no finetune): 0.19499999284744263
+tmp sparsity-0.25 accur(finetuned): 0.8783000111579895
