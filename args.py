@@ -109,9 +109,9 @@ TRAIN_AGENT = Namespace(
         'discount': 1.,
         'hidden1': 300,
         'hidden2': 300,
-        'lr_a': 1e-3,
-        'lr_c': 1e-3,
-        'rmsize': 128,
+        'lr_a': 3e-4,
+        'lr_c': 3e-3,
+        'rmsize': 10000,
         'n_update': 3,
         'window_length': 1,
         'bsize': 64

@@ -128,7 +128,7 @@ class SequentialMemory(Memory):
         self.terminals = RingBuffer(limit)
         self.observations = RingBuffer(limit)
 
-    def sample(self, batch_size, batch_idxs=None):
+    def _sample(self, batch_size, batch_idxs=None):
         if batch_idxs is None:
             # Draw random indexes such that we have at least a single entry before each
             # index.
@@ -182,7 +182,7 @@ class SequentialMemory(Memory):
         return experiences
 
     def sample_and_split(self, batch_size, batch_idxs=None):
-        experiences = self.sample(batch_size, batch_idxs)
+        experiences = self._sample(batch_size, batch_idxs)
 
         state0_batch = []
         reward_batch = []
@@ -205,6 +205,13 @@ class SequentialMemory(Memory):
 
         return state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch
 
+    def add(self, state, action, reward, next_state, done):
+        return self.append(state, action, reward, done)
+
+    def sample(self, batch_size, batch_idxs=None):
+        s, a, r, s_, d = self.sample_and_split(batch_size, batch_idxs)
+        return s, a, r, s_, d
+
     def append(self, observation, action, reward, terminal, training=True):
         super(SequentialMemory, self).append(observation, action, reward, terminal, training=training)
 
@@ -224,6 +231,9 @@ class SequentialMemory(Memory):
         config = super(SequentialMemory, self).get_config()
         config['limit'] = self.limit
         return config
+    
+    def size(self):
+        return self.nb_entries
 
 
 class EpisodeParameterMemory(Memory):

@@ -10,6 +10,8 @@ from enum import Enum
 import numpy as np
 import args
 from data import get_cifar10_dataloader
+from copy import deepcopy
+
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
 
@@ -341,10 +343,13 @@ class Env:
         return self.prune_strategy.strategy + self.quant_strategy.strategy
 
 class DemoStepEnv:
-    def __init__(self):
-        self.len = 10
+    def __init__(self, l=20, lmin=3, rmax=15, target=[5.]*20):
+        self.len = l
         self.list = [8.]*self.len
         self.cur_idx = 0
+        self.min = lmin
+        self.max = rmax
+        self.target = target
         
     def step(self, action):
         action = self._action_wall(action)
@@ -358,7 +363,6 @@ class DemoStepEnv:
         if self.is_final():
             done = True
             reward = self.reward()
-            info['info'] += f'\n{self.list}'
 
         if not self.is_final():
             self.cur_idx += 1
@@ -373,22 +377,23 @@ class DemoStepEnv:
         return np.array([self.cur_idx]+ self.list)
 
     def reward(self):
-        target = np.array([5.]*self.len, dtype='float')
-        return -sum(abs(self.list - target))
+        target = np.array(self.target, dtype='float')
+        return -sum(abs(np.array(self.list, dtype='float') - target)) / self.len
 
     def is_final(self):
         return self.cur_idx == self.len-1
 
     def _action_wall(self, action):
         action = float(action)
-        lbound, rbound = 4 - 0.5, 8 + 0.5
+        lbound, rbound = self.min - 0.5, self.max + 0.5
         action = (rbound - lbound) * action + lbound
         action = int(np.round(action, 0))
         return action
 
     @property
     def strategy(self):
-        return self.list
+        return deepcopy(self.list)
+
 
 if __name__ == '__main__':
     path = r'D:\d-storage\output\vit\0.9853000044822693.pt'
