@@ -12,7 +12,6 @@ import args
 from data import get_cifar10_dataloader
 from copy import deepcopy
 from mmsa import *
-from log import info_logger
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
 
@@ -88,7 +87,6 @@ class Env:
         self.best_reward = -math.inf
         self.stage = Stage.Quant
 
-        self.logger = info_logger(log_path)
 
     def init_env(self):
         self.quant_idxs, quant_idx = [], []
@@ -154,8 +152,6 @@ class Env:
 
         for idx, state in enumerate(fc_states):
             self._quant_states[idx] = np.array([1, idx]+state, dtype='int')
-        
-        self.logger.info('states update')
 
     def _apply_strategy(self):
         self._apply_prune()
@@ -217,31 +213,6 @@ class Env:
 
         return next_state, reward, done, info_set
 
-    def __update_states(self):
-        pass
-        # method, idx, num_heads, in_dim, out_dim, prec1, prec2
-        # 0        1    2           3      4        5      6
-
-        #  0     1     2     3
-        #  l --  l --  l --  l
-        # msa - msa - mlp -mlp
-        # update states according to strategy
-        # for idx, b in enumerate(self.quant_strategy.strategy):
-        #     self._quant_states[idx][-1] = b
-        #     self._quant_states[idx][-2] = b
-        #     # update prune state
-        #     fc_idx = idx % 4
-        #     if fc_idx in [0, 1]:
-        #         msa_idx = idx // 4
-        #         self._prune_states[msa_idx][fc_idx-2] = b
-
-        # for idx, heads in enumerate(self.prune_strategy.strategy):
-        #     # update prune state
-        #     self._prune_states[idx][2] = heads
-        #     # update quant state
-        #     fc_idxs = [idx*4, idx*4+1]
-        #     self._quant_states[fc_idxs[0]][4] = self.head_dim * heads
-        #     self._quant_states[fc_idxs[1]][3] = self.head_dim * heads
 
     def _get_next_states(self, norm=False):
         if self.stage is Stage.Quant:
@@ -253,8 +224,6 @@ class Env:
             finetune(self.model, self.trainloader, self.device)
         acc = eval_model(self.model, self.testloader, self.device)
 
-        self.logger.warning(f'{self.strategy} has acc {acc}')
-        
         return (acc - self.ori_acc) * 0.1
 
     def _adjust_strategy(self):

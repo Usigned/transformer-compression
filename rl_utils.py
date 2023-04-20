@@ -55,7 +55,7 @@ def train_on_policy_agent(env, agent, num_episodes):
                 pbar.update(1)
     return return_list
 
-def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, minimal_size, batch_size, logger=None):
+def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, minimal_size, batch_size):
     return_list = []
     best_reward = -math.inf
     best_policy = []
@@ -85,12 +85,8 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
                 if final_reward > best_reward:
                     best_reward = final_reward
                     best_policy = env.strategy
-                    if logger:
-                        logger.warning(f'best ward: {best_reward}, best policy: {best_policy}')
 
                 return_list.append(episode_return)
-                if logger:
-                    logger.info(f'{episode_return}')
                 if (i_episode+1) % 10 == 0:
                     pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
                 pbar.update(1)

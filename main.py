@@ -11,7 +11,6 @@ from model import get_vit
 
 from env import Env
 from ddpg import DDPG
-from log import info_logger
 
 if __name__ == '__main__':
 
@@ -36,4 +35,4 @@ if __name__ == '__main__':
         action_dim=action_dim, **args.AGENT 
     )
 
-    return_list, best_reward, best_s, r, s  = rl_utils.train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size, logger=info_logger(rl_log_path))
+    return_list, best_reward, best_s, r, s  = rl_utils.train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size)
