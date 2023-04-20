@@ -52,7 +52,7 @@ class Strategy:
 
 
 class Env:
-    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, log_path, state_dim=7, float_bit=8) -> None:
+    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, state_dim=7, float_bit=8) -> None:
         self.model = model
         self.weight_path = weight_path
         self.load_weight()
@@ -202,7 +202,7 @@ class Env:
 
             info_set['info'] = f'{self.stage.name} finish\nquant_pi:{self.quant_strategy}\nprune_pi:{self.prune_strategy}\nreward: {reward}\n'
 
-            self._build_state()
+
             next_state = self.reset()
             return next_state, reward, done, info_set
 
@@ -233,6 +233,7 @@ class Env:
         self.load_weight()
         self.cur_idx = 0
         self.stage = Stage.Quant if self.stage is Stage.Prune else Stage.Prune
+        self._build_state()
         return self._get_next_states()
 
     def _action_wall(self, action):

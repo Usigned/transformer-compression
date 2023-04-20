@@ -33,6 +33,85 @@ def self_flops(evt: FunctionEvent):
     return flops
 
 
+class SampleEncoder(nn.Module):
+    def __init__(self, msa:SelfAttention, mlp:MlpBlock, in_dim) -> None:
+        super().__init__()
+        self.attn = msa
+        self.norm1 = nn.LayerNorm(768)
+        self.mlp = mlp
+        self.norm2 = nn.LayerNorm(768)
+
+    def forward(self, x):
+        residual = x
+        out = self.norm1(x)
+        out = self.attn(out)
+        out += residual
+        residual = out
+        out = self.norm2(out)
+        out = self.mlp(out)
+        out += residual
+        return out
+
+class SampleSelfAttention(nn.Module):
+    def __init__(self, q, k, v, out):
+        super().__init__()
+        self.query = q
+        self.key = k
+        self.value = v
+        self.out = out
+
+    def forward(self, x):
+        b, n, _ = x.shape
+
+        q = self.query(x, dims=([2], [0]))  # b,n,heads,head_dim
+        k = self.key(x, dims=([2], [0]))
+        v = self.value(x, dims=([2], [0]))
+
+        q = q.permute(0, 2, 1, 3)
+        k = k.permute(0, 2, 1, 3)
+        v = v.permute(0, 2, 1, 3)  # b,heads,n,head_dim
+
+        attn_weights = torch.matmul(q, k.transpose(-2, -1)) / self.scale
+        attn_weights = F.softmax(attn_weights, dim=-1)  # b,heads,n,n
+        out = torch.matmul(attn_weights, v)  # b, heads, n, head_dim
+        out = out.permute(0, 2, 1, 3)  # b, n, heads, head_dim
+        out = self.out(out, dims=([2, 3], [0, 1]))
+        return out
+
+class SampleMlpBlock(nn.Module):
+    """ Transformer Feed-Forward Block """
+
+    def __init__(self, fc1:Linear, fc2:Linear):
+        super().__init__()
+        # init layers
+        self.fc1 = fc1
+        self.fc2 = fc2
+        self.act = nn.GELU()
+
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.act(out)
+        out = self.fc2(out)
+        return out
+
+
+
+def prune_heper(prune_strategy, quant_strategy):
+    for heads in prune_strategy:
+        hparams = {
+            "in_dim": 768,
+            "mlp_dim": 3078,
+            "num_heads": heads,
+            "attn_dropout_rate": 0.,
+            "head_dim": 64
+        }
+        prof = Profiler(Encoder, hparams, (1,3,768))
+        lat = prof.cpu_time_total
+        e = 3.54 * lat
+        mem = prof.estimate_memory_usage / 8 *
+
+
+
 class Profiler:
     def __init__(self, layer_type, hparams, x_shape, num_threads=1, **kwargs) -> None:
         self.num_threads = num_threads

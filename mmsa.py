@@ -109,10 +109,10 @@ def set_mask_prune_rate(model:CAFIA_Transformer, prune_rate):
             m.prune_rate=prune_rate
 
 class MaskedSelfAttention(nn.Module):
-    def __init__(self, in_dim, heads=8, dropout_rate=0.1, prune_rate=.25, linear_general=LinearGeneral):
+    def __init__(self, in_dim, heads=8, dropout_rate=0.1, prune_rate=.25, linear_general=LinearGeneral, head_dim=None):
         super(MaskedSelfAttention, self).__init__()
         self.heads = heads
-        self.head_dim = in_dim // heads
+        self.head_dim = in_dim // heads if not head_dim else head_dim
         self.scale = self.head_dim ** 0.5
         self.prune_rate = prune_rate
 
