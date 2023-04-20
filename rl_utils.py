@@ -55,7 +55,7 @@ def train_on_policy_agent(env, agent, num_episodes):
                 pbar.update(1)
     return return_list
 
-def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, minimal_size, batch_size):
+def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, minimal_size, batch_size, logger=None):
     return_list = []
     best_reward = -math.inf
     best_policy = []
@@ -77,7 +77,6 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
                         b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
                         transition_dict = {'states': b_s, 'actions': b_a, 'next_states': b_ns, 'rewards': b_r, 'dones': b_d}
                         c_loss, a_loss = agent.update(transition_dict)
-                        # wandb.log({'critic loss': c_loss, 'a_loss': a_loss})
                 
                 final_reward = T[-1][2]
                 for state, action, reward, next_state, done in T:
@@ -86,8 +85,12 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
                 if final_reward > best_reward:
                     best_reward = final_reward
                     best_policy = env.strategy
+                    if logger:
+                        logger.warning(f'best ward: {best_reward}, best policy: {best_policy}')
 
                 return_list.append(episode_return)
+                if logger:
+                    logger.info(f'{episode_return}')
                 if (i_episode+1) % 10 == 0:
                     pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
                 pbar.update(1)

@@ -12,7 +12,7 @@ class LearnableMask(nn.Module):
         self.pruned_dim = 0
         self.mask = nn.Parameter(torch.ones(dim))
         self.prune_rate = prune_rate
-        self._mask = torch.ones_like(self.mask, requires_grad=False)
+        self._mask = nn.Parameter(torch.ones_like(self.mask), requires_grad=False)
         self.is_fixed = False
         self.random_mask = False
 
@@ -33,18 +33,22 @@ class LearnableMask(nn.Module):
         self.mask = nn.Parameter(self.get_mask())
         self.is_fixed = True
         return self.mask
-    
-    def make_prune_mask(self, prune_rate):
+
+    def _make_prune_mask(self, rest_dim):
+        assert rest_dim > 0
         self.random_mask = False
         if not self.is_fixed:
             self.fix_mask()
         _mask = torch.ones_like(self._mask, requires_grad=False)
-        self.pruned_dim = self.dim - int(prune_rate*self.dim)
+        self.pruned_dim = self.dim - rest_dim
         _, idxs = torch.sort(self.mask)
 
         for idx in idxs[:self.pruned_dim]:
             _mask[idx] = 0
-        self._mask = _mask
+        self._mask = nn.Parameter(_mask, requires_grad=False).to(device=_mask.device)
+    
+    def make_prune_mask(self, prune_rate):
+        self._make_prune_mask(int(prune_rate*self.dim))
 
 
     def make_random_prune_mask(self, prune_rate):
@@ -54,7 +58,7 @@ class LearnableMask(nn.Module):
         self._mask = nn.Parameter(_mask[torch.randperm(self.dim)])
 
     def extra_repr(self):
-        s = "p={}, fixed={}, pruned dim={}".format(self.prune_rate, self.is_fixed, self.pruned_dim)
+        s = "p={}, fixed={}, dim={}".format(self.prune_rate, self.is_fixed, self.dim-self.pruned_dim)
         return s
 
 def get_mask_idx(mvit:CAFIA_Transformer):
@@ -95,7 +99,7 @@ def mix_prune(model:nn.Module, prune_idx, strategy):
     for idx, m in enumerate(model.modules()):
         if idx in prune_idx:
             m:LearnableMask
-            m.make_prune_mask(strategy[i]/m.dim)
+            m._make_prune_mask(strategy[i])
             i += 1
 
 

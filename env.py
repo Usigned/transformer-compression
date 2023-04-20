@@ -12,6 +12,7 @@ import args
 from data import get_cifar10_dataloader
 from copy import deepcopy
 from mmsa import *
+from log import info_logger
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
 
@@ -29,7 +30,8 @@ class Strategy:
 
     @property
     def strategy(self):
-        assert len(self) == self.target_len, f"len: {len(self)}, target: {self.target_len}, val: {self.cur_strategy}"
+        assert len(
+            self) == self.target_len, f"len: {len(self)}, target: {self.target_len}, val: {self.cur_strategy}"
         return self.cur_strategy
 
     def __len__(self):
@@ -49,11 +51,13 @@ class Strategy:
         self.cur_strategy += [val] * (self.target_len-len(self))
         return self
 
+
 class Env:
-    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device) -> None:
+    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, log_path, state_dim=7, float_bit=8) -> None:
         self.model = model
         self.weight_path = weight_path
         self.load_weight()
+        self._model = deepcopy(model)
 
         self.trainloader = trainloader
         self.testloader = testloader
@@ -75,60 +79,134 @@ class Env:
 
         self.device = device
         self.ori_acc = ori_acc
-        self.float_bit = 8
-        self.prune_idx = get_mask_idx(self.model)
-        self._quant_idx = get_quantizable_idx(self.model)
-        self._build_state()
+        self.float_bit = float_bit
+        self.state_dim = state_dim
+
+        self.init_env()
         # runtime
         self.cur_idx = 0
         self.best_reward = -math.inf
-
-        self.quant_strategy = Strategy(len(self.quant_idx), self.max_bit)
-        self.prune_strategy = Strategy(len(self.prune_idx), self.max_heads)
         self.stage = Stage.Quant
 
-    def _expand_strategy(self):
-        q_s = []
-        for i, b in enumerate(self.quant_strategy.strategy):
-            if i % 4 == 0:
-                q_s += [b, b, b]
-            else:
-                q_s.append(b)
-        return q_s
+        self.logger = info_logger(log_path)
+
+    def init_env(self):
+        self.quant_idxs, quant_idx = [], []
+        for idx, m in enumerate(self.model.modules()):
+            if type(m) in (QLinearGeneral, QLinear):
+                quant_idx.append(idx)
+        i = 0
+        while i < len(quant_idx):
+            q, k, v, out, fc1, fc2 = quant_idx[i: i+6]
+            self.quant_idxs += [[q, k, v], [out], [fc1], [fc2]]
+            i += 6
+        self.prune_idxs = [[idx] for idx, m in enumerate(
+            self.model.modules()) if type(m) is LearnableMask]
+
+        self.quant_strategy = self._new_strategy(quant=True)
+        self.prune_strategy = self._new_strategy(quant=False)
+
+        self._quant_states = self._new_states(len(self.quant_strategy))
+        self._prune_states = self._new_states(len(self.prune_strategy))
+
+        self._build_state()
+        self._init_scales()
+
+    def _new_states(self, num_states):
+        return np.ndarray((num_states, self.state_dim), dtype='int')
+
+    def _new_strategy(self, quant=True):
+        data = len(self.quant_idxs) * \
+            [self.float_bit] if quant else len(
+                self.prune_idxs)*[self.max_heads]
+        return np.array(data, dtype='int')
+
+    def _build_state(self):
+        msa_states = []
+        fc_states = []
+        for m in self.model.modules():
+            if type(m) is MaskedSelfAttention:
+                heads = m.heads - m.mask.pruned_dim
+                q, k, v, out = m.query, m.key, m.value, m.out
+                assert isinstance(q, QModule) and isinstance(
+                    k, QModule) and isinstance(v, QModule) and isinstance(out, QModule)
+                assert q.w_bit == k.w_bit == v.w_bit
+                prec1 = q.w_bit if q.w_bit > 0 else self.float_bit
+                prec2 = out.w_bit if out.w_bit > 0 else self.float_bit
+                msa_state = [heads, m.head_dim*m.heads,
+                             m.heads*m.head_dim, prec1, prec2]
+                lg_qkv_state = [1, m.head_dim*m.heads,
+                                heads*m.head_dim, prec1, prec1]
+                lg_out_state = [1, m.head_dim*heads,
+                                m.heads*m.head_dim, prec1, prec1]
+                msa_states.append(msa_state)
+                fc_states.append(lg_qkv_state)
+                fc_states.append(lg_out_state)
+
+            if type(m) is QLinear:
+                heads = 1
+                in_dim = m.in_features
+                out_dim = m.out_features
+                b = m.w_bit if m.w_bit > 0 else self.float_bit
+                fc_states.append([heads, in_dim, out_dim, b, b])
+        for idx, state in enumerate(msa_states):
+            self._prune_states[idx] = np.array([0, idx]+state, dtype='int')
+
+        for idx, state in enumerate(fc_states):
+            self._quant_states[idx] = np.array([1, idx]+state, dtype='int')
+        
+        self.logger.info('states update')
 
     def _apply_strategy(self):
         self._apply_prune()
         self._apply_quant()
 
+    @property
+    def _prune_idx_strategy(self):
+        prune_idx = []
+        for idxs in self.prune_idxs:
+            for idx in idxs:
+                prune_idx.append(idx)
+        return prune_idx, self.prune_strategy
+
     def _apply_prune(self):
-        mix_prune(self.model, self.prune_idx, self.prune_strategy.strategy)
+        mix_prune(self.model, *self._prune_idx_strategy)
+
+    @property
+    def _quant_idx_strategy(self):
+        quant_idx = []
+        quant_strategy = []
+        for idxs, b in zip(self.quant_idxs, self.quant_strategy):
+            for idx in idxs:
+                quant_strategy.append(b)
+                quant_idx.append(idx)
+        return quant_idx, mix_weight_act_strategy(
+            quant_strategy, [self.a_bit]*len(quant_strategy))
 
     def _apply_quant(self):
-        q_s = self._expand_strategy()
-        print(len(q_s))
-        set_mixed_precision(self.model, self._quant_idx, mix_weight_act_strategy(
-            q_s, [self.a_bit] * len(q_s)))
+        assert len(self.quant_idxs) == len(self.quant_strategy)
+        set_mixed_precision(self.model, *self._quant_idx_strategy)
 
     def step(self, action):
         action = self._action_wall(action)
 
         if self.stage is Stage.Quant:
-            self.quant_strategy.set(self.cur_idx, action)
+            self.quant_strategy[self.cur_idx] = action
         else:
-            self.prune_strategy.set(self.cur_idx, action)
+            self.prune_strategy[self.cur_idx] = action
 
         info_set = {'info': f"{self.stage.name} take action {action}"}
 
         if self._is_batch_end():
             self._adjust_strategy()
 
-            self._update_states()
             self._apply_strategy()
             reward = self.reward()
             done = True
 
-            info_set['info'] = f'{self.stage.name} finish\nquant_pi:{self.quant_strategy.strategy}\nprune_pi:{self.prune_strategy.strategy}\nreward: {reward}\n'
+            info_set['info'] = f'{self.stage.name} finish\nquant_pi:{self.quant_strategy}\nprune_pi:{self.prune_strategy}\nreward: {reward}\n'
 
+            self._build_state()
             next_state = self.reset()
             return next_state, reward, done, info_set
 
@@ -139,27 +217,8 @@ class Env:
 
         return next_state, reward, done, info_set
 
-    def show_state(self, norm=True):
-        S = []
-        if norm:
-            S += [self.prune_states, self.quant_states]
-        else:
-            S += [self._prune_states, self._quant_states]
-
-        s = ''
-        for states in S:
-            for i in range(states.shape[0]):
-                # method, *rest = state
-                # s += f'{Stage.Quant if int(method)==1 else Stage.Prune},'
-                # for r in rest:
-                #     s += f'{int(r)}'
-                for d in states[i]:
-                    s += f'{int(d)}, ' if not norm else f'{d}, '
-                s += '\n'
-            s += '==========================================\n'
-        print(s)
-
-    def _update_states(self):
+    def __update_states(self):
+        pass
         # method, idx, num_heads, in_dim, out_dim, prec1, prec2
         # 0        1    2           3      4        5      6
 
@@ -167,38 +226,36 @@ class Env:
         #  l --  l --  l --  l
         # msa - msa - mlp -mlp
         # update states according to strategy
-        for idx, b in enumerate(self.quant_strategy.strategy):
-            self._quant_states[idx][-1] = b
-            self._quant_states[idx][-2] = b
-            # update prune state
-            fc_idx = idx % 4
-            if fc_idx in [0, 1]:
-                msa_idx = idx // 4
-                self._prune_states[msa_idx][fc_idx-2] = b
+        # for idx, b in enumerate(self.quant_strategy.strategy):
+        #     self._quant_states[idx][-1] = b
+        #     self._quant_states[idx][-2] = b
+        #     # update prune state
+        #     fc_idx = idx % 4
+        #     if fc_idx in [0, 1]:
+        #         msa_idx = idx // 4
+        #         self._prune_states[msa_idx][fc_idx-2] = b
 
-        for idx, heads in enumerate(self.prune_strategy.strategy):
-            # update prune state
-            self._prune_states[idx][2] = heads
-            # update quant state
-            fc_idxs = [idx*4, idx*4+1]
-            self._quant_states[fc_idxs[0]][4] = self.head_dim * heads
-            self._quant_states[fc_idxs[1]][3] = self.head_dim * heads
+        # for idx, heads in enumerate(self.prune_strategy.strategy):
+        #     # update prune state
+        #     self._prune_states[idx][2] = heads
+        #     # update quant state
+        #     fc_idxs = [idx*4, idx*4+1]
+        #     self._quant_states[fc_idxs[0]][4] = self.head_dim * heads
+        #     self._quant_states[fc_idxs[1]][3] = self.head_dim * heads
 
     def _get_next_states(self, norm=False):
         if self.stage is Stage.Quant:
             return self.quant_states[self.cur_idx, :].copy() if norm else self._quant_states[self.cur_idx, :].copy()
         return self.prune_states[self.cur_idx, :].copy() if norm else self._prune_states[self.cur_idx, :].copy()
 
-    def test_reward(self):
-        s = -abs(5 - sum(self.quant_strategy.strategy)/len(self.quant_strategy))
-        return s
-
     def reward(self):
-        # acc = eval_model(finetune(self.model, self.trainloader,
-        #                  self.device), self.testloader, self.device)
-        # return (acc - self.ori_acc) * 0.1
-        # self.model(torch.randn(1, 3, 224, 224))
-        return 0.
+        if True:
+            finetune(self.model, self.trainloader, self.device)
+        acc = eval_model(self.model, self.testloader, self.device)
+
+        self.logger.warning(f'{self.strategy} has acc {acc}')
+        
+        return (acc - self.ori_acc) * 0.1
 
     def _adjust_strategy(self):
         pass
@@ -225,107 +282,9 @@ class Env:
 
     def _is_batch_end(self):
         if self.stage is Stage.Quant:
-            return self.cur_idx == len(self.quant_idx)-1
+            return self.cur_idx == len(self.quant_strategy)-1
         if self.stage is Stage.Prune:
-            return self.cur_idx == len(self.prune_idx)-1
-
-    def _build_state(self):
-        quant_idx = []
-
-        prune_states = []
-        quant_states = []
-        i, j = 0, 0
-
-        for idx, m in enumerate(self.model.modules()):
-            if type(m) is MaskedSelfAttention:
-                this_state = []
-                heads = m.heads-m.mask.pruned_dim
-                in_dim = heads*m.head_dim
-                out_dim = m.head_dim*m.heads # type: ignore
-                this_state.append([Stage.Prune.value])
-                this_state.append([i])
-                this_state.append([heads])
-                this_state.append([in_dim])
-                this_state.append([out_dim])
-                this_state.append([self.float_bit])  # prec1
-                this_state.append([self.float_bit])  # prec2
-                prune_states.append(np.hstack(this_state))
-                i += 1
-
-                for _ in range(2):
-                    this_state = []
-                    this_state.append([Stage.Quant.value])
-                    this_state.append([j])
-                    this_state.append([1])
-                    this_state.append([in_dim])
-                    this_state.append([out_dim])
-                    this_state.append([self.float_bit])  # prec1
-                    this_state.append([self.float_bit])  # prec2
-                    quant_states.append(np.hstack(this_state))
-                    j += 1
-                    quant_idx.append(idx)
-            if type(m) is QLinear:
-                in_dim = m.in_features
-                out_dim = m.out_features
-                this_state = []
-                this_state.append([Stage.Quant.value])
-                this_state.append([j])
-                this_state.append([1])
-                this_state.append([in_dim])
-                this_state.append([out_dim])
-                this_state.append([self.float_bit])  # prec1
-                this_state.append([self.float_bit])  # prec2
-                quant_states.append(np.hstack(this_state))
-                j += 1
-                quant_idx.append(idx)
-
-        self._quant_states = np.array(quant_states, 'float')
-        self._prune_states = np.array(prune_states, 'float')
-
-        print(
-            '=> shape of quant state (n_layer * n_dim): {}'.format(self._quant_states.shape))
-        print(
-            '=> shape of prune state (n_layer * n_dim): {}'.format(self._prune_states.shape))
-
-        # quant state scale
-        if hasattr(self, '_qmin'):
-            _qmin = [1, 0, 1]
-            _qmin.append(
-                min(min(self._quant_states[:, 3]), self.min_heads*self.head_dim))
-            _qmin.append(
-                min(min(self._quant_states[:, 4]), self.min_heads*self.head_dim))
-            _qmin.append(self.min_bit)
-            _qmin.append(self.min_bit)
-
-            _qmax = [1, max(self._quant_states[:, 1]), 1]
-            _qmax.append(
-                max(max(self._quant_states[:, 3]), self.max_heads*self.head_dim))
-            _qmax.append(
-                max(max(self._quant_states[:, 4]), self.max_heads*self.head_dim))
-            _qmax.append(self.max_bit)
-            _qmax.append(self.max_bit)
-
-            # prune state scale
-            _pmin = [1, 0, self.min_heads]
-            _pmin.append(
-                min(min(self._prune_states[:, 3]), self.min_heads*self.head_dim))
-            _pmin.append(
-                min(min(self._prune_states[:, 4]), self.min_heads*self.head_dim))
-            _pmin.append(self.min_bit)
-            _pmin.append(self.min_bit)
-
-            _pmax = [1, max(self._prune_states[:, 1]), self.max_heads]
-            _pmax.append(
-                max(max(self._prune_states[:, 3]), self.max_heads*self.head_dim))
-            _pmax.append(
-                max(max(self._prune_states[:, 4]), self.max_heads*self.head_dim))
-            _pmax.append(self.max_bit)
-            _pmax.append(self.max_bit)
-
-            self._qmax, self._qmin, self._pmax, self._pmin = _qmax, _qmin, _pmax, _pmin
-
-        self.quant_idx = quant_idx
-
+            return self.cur_idx == len(self.prune_strategy)-1
 
     @property
     def quant_states(self):
@@ -334,7 +293,8 @@ class Env:
             fmin = self._qmin[i]
             fmax = self._qmax[i]
             if fmax - fmin > 0:
-                states[:, i] = (states[:, i] - fmin) / (fmax - fmin) # type: ignore
+                states[:, i] = (states[:, i] - fmin) / \
+                    (fmax - fmin)  # type: ignore
         return states
 
     @property
@@ -347,17 +307,58 @@ class Env:
                 states[:, i] = (states[:, i] - fmin) / (fmax - fmin)
         return states
 
+    def _init_scales(self):
+        '''
+        should compute only once during init
+        '''
+        _qmin = [1, 0, 1]
+        _qmin.append(
+            min(min(self._quant_states[:, 3]), self.min_heads*self.head_dim))
+        _qmin.append(
+            min(min(self._quant_states[:, 4]), self.min_heads*self.head_dim))
+        _qmin.append(self.min_bit)
+        _qmin.append(self.min_bit)
+        self._qmin = _qmin
+
+        _qmax = [1, max(self._quant_states[:, 1]), 1]
+        _qmax.append(
+            max(max(self._quant_states[:, 3]), self.max_heads*self.head_dim))
+        _qmax.append(
+            max(max(self._quant_states[:, 4]), self.max_heads*self.head_dim))
+        _qmax.append(self.max_bit)
+        _qmax.append(self.max_bit)
+        self._qmax = _qmax
+
+        # prune state scale
+        _pmin = [1, 0, self.min_heads]
+        _pmin.append(
+            min(min(self._prune_states[:, 3]), self.min_heads*self.head_dim))
+        _pmin.append(
+            min(min(self._prune_states[:, 4]), self.min_heads*self.head_dim))
+        _pmin.append(self.min_bit)
+        _pmin.append(self.min_bit)
+        self._pmin = _pmin
+
+        _pmax = [1, max(self._prune_states[:, 1]), self.max_heads]
+        _pmax.append(
+            max(max(self._prune_states[:, 3]), self.max_heads*self.head_dim))
+        _pmax.append(
+            max(max(self._prune_states[:, 4]), self.max_heads*self.head_dim))
+        _pmax.append(self.max_bit)
+        _pmax.append(self.max_bit)
+        self._pmax = _pmax
+
     def _reset_everything(self):
         self._build_state()
-        self.quant_strategy = Strategy(len(self.quant_idx), self.max_bit)
-        self.prune_strategy = Strategy(
-            len(self.prune_idx), self.max_heads)
+        self.quant_strategy = self._new_strategy(quant=True)
+        self.prune_strategy = self._new_strategy(quant=False)
         self.stage = Stage.Quant
         return self.reset()
 
     @property
     def strategy(self):
-        return self.prune_strategy.strategy + self.quant_strategy.strategy
+        return self.prune_strategy.tolist() + self.quant_strategy.tolist()
+
 
 class DemoStepEnv:
     def __init__(self, l=20, lmin=3, rmax=15, target=[5.]*20):
@@ -367,10 +368,10 @@ class DemoStepEnv:
         self.min = lmin
         self.max = rmax
         self.target = target
-        
+
     def step(self, action):
         action = self._action_wall(action)
-        
+
         self.list[self.cur_idx] = action
 
         done = False
@@ -384,18 +385,19 @@ class DemoStepEnv:
         if not self.is_final():
             self.cur_idx += 1
         else:
-            self.cur_idx =0
+            self.cur_idx = 0
 
-        state = np.array([self.cur_idx]+ self.list, dtype='float')
+        state = np.array([self.cur_idx] + self.list, dtype='float')
         return state, reward, done, info
 
     def reset(self):
         self.cur_idx = 0
-        return np.array([self.cur_idx]+ self.list)
+        return np.array([self.cur_idx] + self.list)
 
     def reward(self):
         target = np.array(self.target, dtype='float')
-        return -sum(abs(np.array(self.list, dtype='float') - target)) / self.len # type: ignore
+        # type: ignore
+        return -sum(abs(np.array(self.list, dtype='float') - target)) / self.len
 
     def is_final(self):
         return self.cur_idx == self.len-1

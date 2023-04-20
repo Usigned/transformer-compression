@@ -80,6 +80,7 @@ def eval_model(model, dataloader, device='cpu'):
     logging.info(
         '**************************** start to evaluate *******************************')
     model.eval()
+    fix_dmask(model)
     model = model.to(device)
     total, correct = 0, 0
     for _, batch in enumerate(tqdm(dataloader, desc="Iteration")):
@@ -100,6 +101,7 @@ def finetune(model: nn.Module, trainloader, device, epoches=1, save_dir=None, fn
     logging.info(
         f'**************************** start to finetune {epoches} turns*******************************')
     model.train()
+    fix_dmask(model)
     model = model.to(device)
 
     if 'lr' not in optim_kwargs:
