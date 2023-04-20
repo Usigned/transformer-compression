@@ -1,0 +1,20 @@
+pat-0.75 sparsity-0.75 accur(no finetune): 0.9627000093460083
+pat-0.75 sparsity-0.5 accur(no finetune): 0.6969000101089478
+pat-0.75 sparsity-0.5 accur(finetuned): 0.9340000152587891
+pat-0.75 sparsity-0.25 accur(no finetune): 0.14489999413490295
+pat-0.75 sparsity-0.25 accur(finetuned): 0.8988000154495239
+pat-0.5 sparsity-0.75 accur(no finetune): 0.9431999921798706
+pat-0.5 sparsity-0.5 accur(no finetune): 0.8289999961853027
+pat-0.5 sparsity-0.5 accur(finetuned): 0.9555000066757202
+pat-0.5 sparsity-0.25 accur(no finetune): 0.19460000097751617
+pat-0.5 sparsity-0.25 accur(finetuned): 0.9007999897003174
+random pruning sparsity-0.75 accur(no finetune): 0.958299994468689
+random pruning sparsity-0.5 accur(no finetune): 0.32739999890327454
+random pruning sparsity-0.5 accur(finetuned): 0.9415000081062317
+random pruning sparsity-0.25 accur(no finetune): 0.12880000472068787
+random pruning sparsity-0.25 accur(finetuned): 0.8977000117301941
+tmp sparsity-0.75 accur(no finetune): 0.9578999876976013
+tmp sparsity-0.5 accur(no finetune): 0.5626000165939331
+tmp sparsity-0.5 accur(finetuned): 0.9448999762535095
+tmp sparsity-0.25 accur(no finetune): 0.19499999284744263
+tmp sparsity-0.25 accur(finetuned): 0.8783000111579895

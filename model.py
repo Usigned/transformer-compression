@@ -57,7 +57,8 @@ class MlpBlock(nn.Module):
         if self.dropout1:
             out = self.dropout1(out)
         out = self.fc2(out)
-        out = self.dropout2(out)
+        if self.dropout2:
+            out = self.dropout2(out)
         return out
 
 
