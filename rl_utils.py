@@ -5,6 +5,10 @@ import torch
 import collections
 import random
 import ddpg, ddpg
+import logging
+
+logging.basicConfig(filename='rl_log.log', filemode="w", format="%(asctime)s %(name)s:%(levelname)s:%(message)s", datefmt="%d-%M-%Y %H:%M:%S", level=logging.DEBUG)
+logger = logging.getLogger()
 
 class ReplayBuffer:
     def __init__(self, capacity):

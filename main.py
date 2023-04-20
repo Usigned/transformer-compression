@@ -11,12 +11,12 @@ from model import get_vit
 
 from env import Env
 from ddpg import DDPG
-from log import info_logger
 
 if __name__ == '__main__':
+    import torch_npu
 
     env_log_path = 'env.log'
-    rl_log_path = 'rl.log'
+
 
     num_episodes = 5000
     minimal_size = 1000
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     buffer_size = 10000
 
     env_name = 'MyEnv'
-    env = Env(get_vit(args.MQVIT), **args.ENV, log_path='env.log')
+    env = Env(get_vit(args.MQVIT), **args.ENV)
     random.seed(0)
     np.random.seed(0)
     torch.manual_seed(0)
@@ -36,4 +36,4 @@ if __name__ == '__main__':
         action_dim=action_dim, **args.AGENT 
     )
 
-    return_list, best_reward, best_s, r, s  = rl_utils.train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size, logger=info_logger(rl_log_path))
+    return_list, best_reward, best_s, r, s  = rl_utils.train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size)

@@ -9,10 +9,12 @@ from model import *
 from enum import Enum
 import numpy as np
 import args
-from data import get_cifar10_dataloader
 from copy import deepcopy
 from mmsa import *
-from log import info_logger
+import logging
+
+logging.basicConfig(filename='rl_log.log', filemode="w", format="%(asctime)s %(name)s:%(levelname)s:%(message)s", datefmt="%d-%M-%Y %H:%M:%S", level=logging.DEBUG)
+logger = logging.getLogger()
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
 
@@ -53,7 +55,8 @@ class Strategy:
 
 
 class Env:
-    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, log_path, state_dim=7, float_bit=8) -> None:
+    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, state_dim=7, float_bit=8) -> None:
+        
         self.model = model
         self.weight_path = weight_path
         self.load_weight()
@@ -88,7 +91,6 @@ class Env:
         self.best_reward = -math.inf
         self.stage = Stage.Quant
 
-        self.logger = info_logger(log_path)
 
     def init_env(self):
         self.quant_idxs, quant_idx = [], []
@@ -155,7 +157,7 @@ class Env:
         for idx, state in enumerate(fc_states):
             self._quant_states[idx] = np.array([1, idx]+state, dtype='int')
         
-        self.logger.info('states update')
+        logger.info('states update')
 
     def _apply_strategy(self):
         self._apply_prune()
@@ -253,7 +255,7 @@ class Env:
             finetune(self.model, self.trainloader, self.device)
         acc = eval_model(self.model, self.testloader, self.device)
 
-        self.logger.warning(f'{self.strategy} has acc {acc}')
+        logger.warning(f'{self.strategy} has acc {acc}')
         
         return (acc - self.ori_acc) * 0.1
 

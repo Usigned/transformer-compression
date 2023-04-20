@@ -103,7 +103,7 @@ MQVIT = Namespace(
 
 
 ENV = {
-    "weight_path": r'D:\d-storage\output\vit\0.9853000044822693.pt',
+    "weight_path": r'/home/ma-user/work/Vision-Transformer-ViT/output/mvit/pat-0.5.pt',
     'trainloader': get_cifar10_dataloader(train=True),
     'testloader': get_cifar10_dataloader(train=False),
     "ori_acc": 0.9853000044822693,
@@ -116,7 +116,7 @@ ENV = {
     "max_heads": 12,
     "min_heads": 3,
     'head_dim': 64,
-    'device': "cuda" if torch.cuda.is_available() else "cpu"
+    'device': "npu"
 }
 
 
@@ -130,5 +130,5 @@ AGENT = {
     'warmup': 20,
     'init_delta': 0.5,
     'delta_decay': 0.999,
-    'device': "cuda" if torch.cuda.is_available() else "cpu"
+    'device': "npu"
 }
