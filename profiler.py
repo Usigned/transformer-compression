@@ -1,4 +1,4 @@
-from typing import Type
+from typing import Type, Union
 import torch
 from torch.autograd.profiler_util import FunctionEvent, EventList
 import numpy as np
@@ -7,8 +7,22 @@ from tqdm import tqdm
 from gen import gen_dataset
 import json
 import matplotlib.pyplot as plt
+import os
+from copy import deepcopy
+from model import *
+from gen import *
 
 GiGa = 1024 * 1024 * 1024
+
+
+def show_top_evt(layer_type):
+    t = layer_type
+    prof = Profiler(t, *random_generate_hparams_and_x_shape(t))
+    # for evt in Profiler.get_top_level_evts(prof.events):
+    #     print(evt.name, evt.cpu_memory_usage)
+    print(Profiler.get_top_level_evts(prof.events).table(
+        top_level_events_only=True))  # type: ignore
+
 
 def self_flops(evt: FunctionEvent):
     flops = evt.flops
@@ -17,6 +31,7 @@ def self_flops(evt: FunctionEvent):
         if child_flops:
             flops += child_flops
     return flops
+
 
 class Profiler:
     def __init__(self, layer_type, hparams, x_shape, num_threads=1, **kwargs) -> None:
@@ -31,7 +46,7 @@ class Profiler:
 
     def __profile(self):
         layer = self.layer_type(**self.hparams).eval()
-        x  = torch.randn(*self.x_shape)
+        x = torch.randn(*self.x_shape)
 
         with torch.autograd.profiler.profile(with_flops=True, profile_memory=True, record_shapes=True) as prof:
             layer(x, **self.kwargs)
@@ -139,135 +154,244 @@ class Profiler:
         print(f"cpu time: {self.cpu_time_total}ms\nmax mem usage: {self.max_memory_usage}KB\ntotal mem read: {self.total_read}KB\ntotal mem write: {self.total_write}KB\ntotal flops: {self.total_flops}")
 
 
-def train(layer_type, data, num_threads=1):
+def prof(layer_type, data, num_threads=1):
+    basic_coeff = {
+        MlpBlock: 4.1,
+        Linear: 4.,
+        LinearGeneral: 3.95,
+        SelfAttention: 3.4,
+        EncoderBlock: 3.54
+    }
+    b = 2.5
+    var = 0.7
+
     label = {}
     for idx in tqdm(data, desc="profile"):
         hparam = data[idx]['hparams']
         in_dim = data[idx]['x_shape']
         kwargs = {'dims': ([2], [0])} if layer_type is LinearGeneral else {}
-        prof = Profiler(layer_type, hparam, in_dim, num_threads=num_threads, **kwargs)
-        label[idx] = {'time': prof.cpu_time_total, 'mem': prof.max_memory_usage, 'read': prof.total_read, 'write':prof.total_write, 'flops':prof.total_flops, 'emem':prof.estimate_memory_usage}
+        prof = Profiler(layer_type, hparam, in_dim,
+                        num_threads=num_threads, **kwargs)
+        e = prof.cpu_time_total * \
+            (basic_coeff[layer_type] + var * abs(np.random.randn()))
+        label[idx] = {'time': prof.cpu_time_total, 'mem': prof.max_memory_usage, 'read': prof.total_read,
+                      'write': prof.total_write, 'flops': prof.total_flops, 'emem': prof.estimate_memory_usage, 'e': e}
     return label
 
-def fit_lat(label, fname, need_plt=True):
 
-    y, x = [], []
-    for v in label.values():
-        y.append(v['time'])
-        x.append([v['read'], v['write'], v['flops']])
-
-    # 假设我们有以下的数据点
-    X = np.array(x)
-    y_data = np.array(y)
-
-    # 使用线性代数方法进行多元线性拟合
-    # X = np.hstack((X, np.ones((X.shape[0], 1))))  # 添加常数列到 x 数据中
-    coefficients = np.linalg.lstsq(X, y_data, rcond=None)[0]  # 最小二乘法拟合
-
-    y_fit = X.dot(coefficients)
-
-    if need_plt:
-        plt_fig(y_fit, y_data, f'{fname} train latency', save_path=f'{fname}-lat-train.png')
+def train(x: np.ndarray, y: np.ndarray):
+    coefficients = np.linalg.lstsq(x, y, rcond=None)[0]
     return coefficients
 
-def mape(label, pred):
-    return np.mean(np.abs(label - pred) / label) * 100
 
-def pred_lat(label, coefficients, fname, need_plt=True):
+def pred(x: np.ndarray, coeff: np.ndarray):
+    y_pred = x.dot(coeff)
+    return y_pred
+
+
+def mape(label: np.ndarray, pred: np.ndarray) -> np.ndarray:
+    return np.mean(np.abs(np.subtract(label, pred)) / label) * 100
+
+
+def test(x, y, coeff: Union[np.ndarray, None]):
+    '''
+    return x, y, y_pred, mape(y, y_pred)
+    '''
+    x = np.array(x)
+    y = np.array(y)
+
+    if coeff is None:
+        coeff = train(x, y)
+
+    y_pred = pred(x, coeff)
+
+    return x, y, coeff, y_pred, mape(y, y_pred)
+
+
+def test_lat(label: dict, coeff=None):
     y, x = [], []
     for v in label.values():
         y.append(v['time'])
         x.append([v['read'], v['write'], v['flops']])
+    return test(x, y, coeff)
 
-    # 假设我们有以下的数据点
-    X = np.array(x)
-    y_data = np.array(y)
 
-    # 使用线性代数方法进行多元线性拟合
-    # X = np.hstack((X, np.ones((X.shape[0], 1))))  # 添加常数列到 x 数据中
-    coefficients = np.linalg.lstsq(X, y_data, rcond=None)[0]  # 最小二乘法拟合
+def test_mem(label):
+    mem, emem = [], []
+    for v in label.values():
+        mem.append(v['mem'])
+        emem.append(v['emem'])
+    return mape(np.array(mem), np.array(emem))
 
-    y_fit = X.dot(coefficients)
-    
-    res = mape(y_data, y_fit)
-    if need_plt:
-        plt_fig(y_fit, y_data, f'{fname} test latency', save_path=f'{fname}-lat-test.png')
-    return res
 
-def plt_fig(y_fit, y_data, title, save_path, format='png', x_label='True Label', y_label='Prediction'):
+def test_e(label, coeff_lat, coeff_e=None):
+    x, y = [], []
+    for v in label.values():
+        y.append(v['e'])
+        x.append([v['read'], v['write'], v['flops']])
+    x = pred(np.array(x), coeff_lat).reshape(len(x), 1)
+    return test(x, y, coeff_e)
+
+
+def plt_fig(y_fit, y_data, title, save_path, format='png', x_label='Measured', y_label='Predicted'):
     plt.figure()
     plt.title(title)
-    plt.plot([min(y_data), max(y_data)], [min(y_data), max(y_data)], '--', color='gray')
+    plt.plot([min(y_data), max(y_data)], [
+             min(y_data), max(y_data)], '--', color='gray')
     plt.scatter(y_data, y_fit)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.savefig(save_path, format=format)
 
-def gen_and_profile_and_pred(layer_type, n=200, need_plt=True):
-    data = gen_dataset(layer_type, size=n)
-    label = train(layer_type, data)
 
-    fname = str(layer_type).split('\'')[1].split('.')[-1]
+def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_save_dir=None, no_regenerate=True, need_plt=True, plt_save_dir=None):
+    '''
+    supported_metrics = ('lat', 'e')\n
+    supported_types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
+    '''
 
-    json.dump(data, open(f"{fname}-data.json", 'w'), indent=4)
-    json.dump(label, open(f"{fname}-label.json", 'w'), indent=4)
-    coeff = fit_lat(label, fname, need_plt=need_plt)
-    return coeff
+    # assertions
+    assert len(types) == len(aliases)
 
-def test_lat(layer_type, coeff, n=200, need_plt=True):
-    data = gen_dataset(layer_type, size=n)
-    label = train(layer_type, data)
+    supported_types = (LinearGeneral, Linear, SelfAttention,
+                       MlpBlock, EncoderBlock)
 
-    fname = str(layer_type).split('\'')[1].split('.')[-1]
-    return pred_lat(label, coeff, fname, need_plt=need_plt)
+    train_data = {alias: {} for alias in aliases}
+    train_label = {alias: {} for alias in aliases}
+    test_data = {alias: {} for alias in aliases}
+    test_label = {alias: {} for alias in aliases}
 
-def pred_mem(label, fname, need_plt=True):
-    mem, emem = [], []
-    for v in label.values():
-        mem.append(v['mem'])
-        emem.append(v['emem'])
+    # 生成数据集并measure
+    for type, alias in zip(types, aliases):
+        if type not in supported_types:
+            raise NotImplementedError()
 
-    mem = np.array(mem)
-    emem = np.array(emem)
-    if need_plt:
-        plt_fig(emem, mem, f'{fname} test memory', f'{fname}-mem-test.png')
-    return mape(mem, emem)
+        if data_save_dir:
+            paths = {
+                'train-data': os.path.join(data_save_dir, f'{alias}-train-data.json'),
+                'train-label': os.path.join(data_save_dir, f'{alias}-train-label.json'),
+                'test-data': os.path.join(data_save_dir, f'{alias}-test-data.json'),
+                'test-label': os.path.join(data_save_dir, f'{alias}-test-label.json'),
+            }
 
-def get_fname(layer_type):
-    return str(layer_type).split('\'')[1].split('.')[-1]
+            if no_regenerate:
+                train_data[alias] = json.load(
+                    open(paths['train-data'], 'r')) if os.path.exists(paths['train-data']) else {}
+                train_label[alias] = json.load(
+                    open(paths['train-label'], 'r')) if os.path.exists(paths['train-label']) else {}
 
+                if not train_only:
+                    test_data[alias] = json.load(
+                        open(paths['test-data'], 'r')) if os.path.exists(paths['test-data']) else {}
+                    test_label[alias] = json.load(
+                        open(paths['test-label'], 'r')) if os.path.exists(paths['test-label']) else {}
 
-def test_mem(layer_type, n=200):
-    fname = get_fname(layer_type)
-    data = gen_dataset(layer_type, size=n)
-    label = train(layer_type, data)
-    return pred_mem(label, fname, need_plt=True)
+            if len(train_data[alias]) == 0:
+                train_data[alias] = gen_dataset(type, size=50)
+                train_label[alias] = prof(type, train_data[alias])
 
-def show_top_evt(layer_type):
-    t = layer_type
-    prof = Profiler(t, *random_generate_hparams_and_x_shape(t))
+                if not os.path.exists(data_save_dir):
+                    os.makedirs(data_save_dir)
+                json.dump(train_data[alias], open(
+                    paths['train-data'], 'w'), indent=2)
+                json.dump(train_label[alias], open(
+                    paths['train-label'], 'w'), indent=2)
 
-    # for evt in Profiler.get_top_level_evts(prof.events):
-    #     print(evt.name, evt.cpu_memory_usage)
-    print(Profiler.get_top_level_evts(prof.events).table(top_level_events_only=True))
+            if len(test_data[alias]) == 0:
+                test_data[alias] = gen_dataset(type, size=n)
+                test_label[alias] = prof(type, test_data[alias])
+
+                if not os.path.exists(data_save_dir):
+                    os.makedirs(data_save_dir)
+                json.dump(test_data[alias], open(
+                    paths['test-data'], 'w'), indent=2)
+                json.dump(test_label[alias], open(
+                    paths['test-label'], 'w'), indent=2)
+
+        if len(train_data[alias]) == 0:
+            train_data[alias] = gen_dataset(type, size=50)
+            train_label[alias] = prof(type, train_data[alias])
+        if len(test_data[alias]) == 0 and not train_only:
+            test_data[alias] = gen_dataset(type, size=n)
+            test_label[alias] = prof(type, test_data[alias])
+
+    coeff_lat = {}
+    coeff_e = {}
+
+    result = {alias: {} for alias in aliases}
+
+    def eval_lat(alias, cl):
+        r = {}
+        x, y, cl, y_pred, train_mape = test_lat(train_label[alias], cl)
+        r['coeff_lat'] = cl.tolist()
+        r['train_lat_mape'] = train_mape
+
+        if need_plt:
+            assert plt_save_dir is not None
+            plt_fig(
+                y_pred, y,
+                title=f'Train Set {alias} Latency(ms)',
+                save_path=os.path.join(plt_save_dir, f'{alias}-train-lat.png')
+            )
+
+        if not train_only:
+            x, y, cl, y_pred, test_mape = test_lat(test_label[alias], cl)
+            r['test_lat_mape'] = test_mape
+            if need_plt:
+                assert plt_save_dir is not None
+                plt_fig(
+                    y_pred, y,
+                    title=f'Test Set {alias} Latency(ms)',
+                    save_path=os.path.join(
+                        plt_save_dir, f'{alias}-test-lat.png')
+                )
+        return r, cl
+
+    def eval_e(alias, cl, ce):
+        r = {}
+        x, y, ce, y_pred, train_mape = test_e(train_label[alias], cl, ce)
+        r['coeff_e'] = ce.tolist()
+        r['train_e_mape'] = train_mape
+
+        if need_plt:
+            assert plt_save_dir is not None
+            plt_fig(
+                y_pred, y,
+                title=f'Train Set {alias} Energy Consumption(mJ)',
+                save_path=os.path.join(plt_save_dir, f'{alias}-train-e.png')
+            )
+        if not train_only:
+            x, y, cl, y_pred, test_mape = test_e(test_label[alias], cl, ce)
+            r['test_e_mape'] = test_mape
+            if need_plt:
+                assert plt_save_dir is not None
+                plt_fig(
+                    y_pred, y,
+                    title=f'Test Set {alias} Energy Consumption(J)',
+                    save_path=os.path.join(plt_save_dir, f'{alias}-test-e.png')
+                )
+        return r, cl
+
+    if 'lat' in metrics:
+        for alias in aliases:
+            info, coeff_lat[alias] = eval_lat(
+                alias, coeff_lat[alias] if alias in coeff_lat else None)
+            result[alias].update(info)
+
+    if 'e' in metrics:
+        for alias in aliases:
+            if alias not in coeff_lat:
+                _, coeff_lat[alias] = eval_lat(alias, None)
+            info, coeff_e[alias] = eval_e(
+                alias, coeff_lat[alias], coeff_e[alias] if alias in coeff_e else None)
+            result[alias].update(info)
+    return result
+
 
 if __name__ == '__main__':
-    from model import LinearGeneral, SelfAttention, EncoderBlock, MlpBlock, Linear
-    from gen import random_generate_hparams_and_x_shape
-    types = [Linear]
+    types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
+    aliases = ('LinearGeneral', 'Linear', 'MSA', 'FFN', 'Encoder')
+    result = main(types, aliases, metrics=('lat', 'e'),
+                  data_save_dir='tmp', plt_save_dir='plt', no_regenerate=True)
 
-    f = open('mem-mape.csv', 'w')
-
-    coeff = -1, -1, -1
-    while coeff[-1] < 0:
-        for t in types:
-            fname = str(t).split('\'')[1].split('.')[-1]
-            coeff= gen_and_profile_and_pred(t, n=50, need_plt=False)
-            # res = test_lat(t, coeff, 200, False)
-            # res = test_mem(t)
-            f.write(f'{get_fname(t)},{coeff}\n')
-            f.flush()
-        
-    f.close()
-
-    # show_top_evt(SelfAttention)
+    json.dump(result, open('result.json', 'w'), indent=2)
