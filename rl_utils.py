@@ -5,8 +5,6 @@ import torch
 import collections
 import random
 import ddpg, ddpg
-import memory
-import wandb
 
 class ReplayBuffer:
     def __init__(self, capacity):
@@ -79,7 +77,7 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
                         b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
                         transition_dict = {'states': b_s, 'actions': b_a, 'next_states': b_ns, 'rewards': b_r, 'dones': b_d}
                         c_loss, a_loss = agent.update(transition_dict)
-                        wandb.log({'critic loss': c_loss, 'a_loss': a_loss})
+                        # wandb.log({'critic loss': c_loss, 'a_loss': a_loss})
                 
                 final_reward = T[-1][2]
                 for state, action, reward, next_state, done in T:

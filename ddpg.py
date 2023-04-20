@@ -39,7 +39,7 @@ class QValueNet(torch.nn.Module):
         
 class DDPG:
     ''' DDPG算法 '''
-    def __init__(self, state_dim, hidden_dim, action_dim, action_bound, sigma, actor_lr, critic_lr, tau, gamma,warmup, init_delta, delta_decay, device):
+    def __init__(self, state_dim, hidden_dim, action_dim, action_bound, actor_lr, critic_lr, tau, gamma,warmup, init_delta, delta_decay, device):
         self.actor = PolicyNet(state_dim, hidden_dim, action_dim, action_bound).to(device)
         self.critic = QValueNet(state_dim, hidden_dim, action_dim).to(device)
         self.target_actor = PolicyNet(state_dim, hidden_dim, action_dim, action_bound).to(device)
@@ -51,7 +51,6 @@ class DDPG:
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
         self.gamma = gamma
-        self.sigma = sigma  # 高斯噪声的标准差,均值直接设为0
         self.tau = tau  # 目标网络软更新参数
         self.action_dim = action_dim
         self.device = device

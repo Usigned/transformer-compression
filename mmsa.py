@@ -46,12 +46,23 @@ class LearnableMask(nn.Module):
             _mask[idx] = 0
         self._mask = _mask
 
+
     def make_random_prune_mask(self, prune_rate):
         self.random_mask = True
         self.pruned_dim = self.dim - int(prune_rate*self.dim)
         _mask = torch.cat((torch.ones(int(prune_rate*self.dim)), torch.zeros(self.pruned_dim)), 0)
         self._mask = nn.Parameter(_mask[torch.randperm(self.dim)])
 
+    def extra_repr(self):
+        s = "p={}, fixed={}, pruned dim={}".format(self.prune_rate, self.is_fixed, self.pruned_dim)
+        return s
+
+def get_mask_idx(mvit:CAFIA_Transformer):
+    idx = []
+    for i, m in enumerate(mvit.modules()):
+        if type(m) is LearnableMask:
+            idx.append(i)
+    return idx
 
 def fix_dmask(mvit:nn.Module):
     for m in mvit.modules():
@@ -77,6 +88,16 @@ def prune(model:CAFIA_Transformer, prune_rate=1., random=False):
                 m.make_random_prune_mask(prune_rate)
             else:
                 m.make_prune_mask(prune_rate)
+
+def mix_prune(model:nn.Module, prune_idx, strategy):
+    assert len(strategy) == len(prune_idx)
+    i = 0
+    for idx, m in enumerate(model.modules()):
+        if idx in prune_idx:
+            m:LearnableMask
+            m.make_prune_mask(strategy[i]/m.dim)
+            i += 1
+
 
 def set_mask_prune_rate(model:CAFIA_Transformer, prune_rate):
     for m in model.modules():
