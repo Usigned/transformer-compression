@@ -81,3 +81,39 @@ QVIT = Namespace(
         "linear_general": QLinearGeneral,
     }
 )
+
+
+ENV = Namespace(
+    **{
+        "ori_acc": 0.9853000044822693,
+        "lat_b": 1000.,
+        "e_b": 1000.,
+        "mem_b": 1000.,
+        "max_bit": 8,
+        "min_bit": 4,
+        "a_bit": 8,
+        "max_heads": 12,
+        "min_heads": 3,
+        'head_dim': 64
+    }
+)
+
+
+TRAIN_AGENT = Namespace(
+    **{
+        'tau': 0.01,
+        'init_delta': 0.5,
+        'delta_decay': 0.99,
+        'epsilon': 5000, 
+        'warmup': 20,
+        'discount': 1.,
+        'hidden1': 300,
+        'hidden2': 300,
+        'lr_a': 3e-4,
+        'lr_c': 3e-3,
+        'rmsize': 10000,
+        'n_update': 3,
+        'window_length': 1,
+        'bsize': 64
+    }
+)
