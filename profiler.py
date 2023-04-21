@@ -1,6 +1,6 @@
 from typing import Union
 import torch
-from torch.autograd.profiler_util import FunctionEvent, EventList
+# from torch.autograd.profiler_util import FunctionEvent, EventList
 import numpy as np
 from tqdm import tqdm
 from gen import gen_dataset
@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 from model import *
 from gen import *
+import args
 
 GiGa = 1024 * 1024 * 1024
 

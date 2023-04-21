@@ -5,10 +5,7 @@ import torch
 import collections
 import random
 import ddpg, ddpg
-import logging
 
-logging.basicConfig(filename='rl_log.log', filemode="w", format="%(asctime)s %(name)s:%(levelname)s:%(message)s", datefmt="%d-%M-%Y %H:%M:%S", level=logging.DEBUG)
-logger = logging.getLogger()
 
 class ReplayBuffer:
     def __init__(self, capacity):
@@ -52,6 +49,9 @@ def train_on_policy_agent(env, agent, num_episodes):
                     transition_dict['dones'].append(done)
                     state = next_state
                     episode_return += reward
+                with open('rl.log', 'a+') as f:
+                    f.write(f'{i}, {i_episode}, {episode_return}')
+                    f.flush()
                 return_list.append(episode_return)
                 agent.update(transition_dict)
                 if (i_episode+1) % 10 == 0:

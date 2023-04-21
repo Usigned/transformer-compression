@@ -12,10 +12,6 @@ import numpy as np
 import args
 from copy import deepcopy
 from mmsa import *
-import logging
-
-logging.basicConfig(filename='rl_log.log', filemode="w", format="%(asctime)s %(name)s:%(levelname)s:%(message)s", datefmt="%d-%M-%Y %H:%M:%S", level=logging.DEBUG)
-logger = logging.getLogger()
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
 
@@ -278,8 +274,6 @@ class QuantPruneEnv:
 
         for idx, state in enumerate(fc_states):
             self._quant_states[idx] = np.array([1, idx]+state, dtype='int')
-        
-        logger.info('states update')
 
     def _apply_strategy(self):
         self._apply_prune()
@@ -351,8 +345,11 @@ class QuantPruneEnv:
     def reward(self):
         if True:
             finetune(self.model, self.trainloader, self.device)
-        acc = eval_model(self.model, self.testloader, self.device)
-        logger.info(f'{self.strategy} has acc {acc}')
+        with open('strategy.his', 'a+') as f:
+            acc = eval_model(self.model, self.testloader, self.device)
+            f.write(f'{self.strategy} has acc {acc}\n')
+            f.flush()
+
         return (acc - self.ori_acc) * 0.1
 
     def _adjust_strategy(self):
@@ -382,6 +379,7 @@ class QuantPruneEnv:
     def estimate_strategy(q_s, pr_s, coeff_lat, coeff_e, a_bit=8):
         lat, e, mem = 0, 0, 0
         i, j = 0, 0
+        _mir = 0
         while i < len(pr_s) and j < len(q_s):
             heads = pr_s[i]
             wbs = q_s[j:4+j]
@@ -391,7 +389,10 @@ class QuantPruneEnv:
             _lat, _e = estimate_encoder_lat_e(coeff_lat, coeff_e, r, w, flops)
             lat += _lat
             e += _e
-            mem += _mem + w_size
+            mem += w_size
+            _mir = max(_mir, _mem)
+        _mir +=  197*768*4//1024
+        mem += _mir
         return lat, e, mem
 
     def _resource_bound_statisfied(self):
