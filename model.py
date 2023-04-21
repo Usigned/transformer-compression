@@ -75,10 +75,10 @@ class LinearGeneral(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, in_dim, heads=8, dropout_rate=0.1, linear_general=LinearGeneral):
+    def __init__(self, in_dim, heads=8, dropout_rate=0.1, linear_general=LinearGeneral, head_dim=None):
         super(SelfAttention, self).__init__()
         self.heads = heads
-        self.head_dim = in_dim // heads
+        self.head_dim = in_dim // heads if not head_dim else head_dim
         self.scale = self.head_dim ** 0.5
 
         self.query = linear_general((in_dim,), (self.heads, self.head_dim))
@@ -111,12 +111,12 @@ class SelfAttention(nn.Module):
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self, in_dim, mlp_dim, num_heads, dropout_rate=0.1, attn_dropout_rate=0.1, attn_type=SelfAttention, linear=nn.Linear, linear_general=LinearGeneral):
+    def __init__(self, in_dim, mlp_dim, num_heads, dropout_rate=0.1, attn_dropout_rate=0.1, attn_type=SelfAttention, linear=nn.Linear, linear_general=LinearGeneral, head_dim=None):
         super(EncoderBlock, self).__init__()
 
         self.norm1 = nn.LayerNorm(in_dim)
         self.attn = attn_type(in_dim, heads=num_heads,
-                              dropout_rate=attn_dropout_rate, linear_general=linear_general)
+                              dropout_rate=attn_dropout_rate, linear_general=linear_general, head_dim=head_dim)
         if dropout_rate > 0:
             self.dropout = nn.Dropout(dropout_rate)
         else:

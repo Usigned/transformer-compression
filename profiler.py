@@ -1,27 +1,16 @@
-from typing import Type, Union
+from typing import Union
 import torch
 from torch.autograd.profiler_util import FunctionEvent, EventList
 import numpy as np
-import torch.nn as nn
 from tqdm import tqdm
 from gen import gen_dataset
 import json
 import matplotlib.pyplot as plt
 import os
-from copy import deepcopy
 from model import *
 from gen import *
 
 GiGa = 1024 * 1024 * 1024
-
-
-def show_top_evt(layer_type):
-    t = layer_type
-    prof = Profiler(t, *random_generate_hparams_and_x_shape(t))
-    # for evt in Profiler.get_top_level_evts(prof.events):
-    #     print(evt.name, evt.cpu_memory_usage)
-    print(Profiler.get_top_level_evts(prof.events).table(
-        top_level_events_only=True))  # type: ignore
 
 
 def self_flops(evt: FunctionEvent):
@@ -33,24 +22,9 @@ def self_flops(evt: FunctionEvent):
     return flops
 
 
-class Profiler:
-    def __init__(self, layer_type, hparams, x_shape, num_threads=1, **kwargs) -> None:
-        self.num_threads = num_threads
-        torch.set_num_threads(num_threads)
-
-        self.kwargs = kwargs
-        self.layer_type = layer_type
-        self.hparams = hparams
-        self.x_shape = x_shape
-        self.events: EventList = self.__profile()
-
-    def __profile(self):
-        layer = self.layer_type(**self.hparams).eval()
-        x = torch.randn(*self.x_shape)
-
-        with torch.autograd.profiler.profile(with_flops=True, profile_memory=True, record_shapes=True) as prof:
-            layer(x, **self.kwargs)
-        return prof.function_events
+class EventAnalyser:
+    def __init__(self, events: EventList) -> None:
+        self.events = events
 
     @property
     def cpu_time_total(self):
@@ -101,8 +75,8 @@ class Profiler:
             evt: FunctionEvent
             if evt.cpu_parent is None:  # filter non-top-level op
                 op_dict[(evt.id, evt.name)] = {
-                    'read': int(sum([np.prod(s) for s in evt.input_shapes])),
-                    'write': evt.self_cpu_memory_usage,
+                    'read': int(sum(np.prod(s) for s in evt.input_shapes if len(s) != 0)) * 4, # type: ignore
+                    'write': evt.cpu_memory_usage,
                     'flops': self_flops(evt)
                 }
         return op_dict
@@ -129,42 +103,81 @@ class Profiler:
     @property
     def total_read(self):
         return int(sum(
-            sum(np.prod(s) for s in evt.input_shapes) for evt in self.events if evt.cpu_parent is None)) // 1024
+            sum(np.prod(s) for s in evt.input_shapes if len(s) != 0) for evt in self.events if evt.cpu_parent is None)) * 4 // 1024 # type: ignore
 
     @property
     def total_write(self):
-        l = {evt.name: evt.cpu_memory_usage for evt in self.events if evt.cpu_parent is None and evt.cpu_memory_usage > 0}
-
-        for k in l:
-            if 'linear' in k:
-                l[k] = l[k] * 2
-
-        return sum(l.values()) // 1024
+        return sum(evt.cpu_memory_usage for evt in self.events if evt.cpu_parent is None and evt.cpu_memory_usage > 0) // 1024
 
     def __repr__(self):
         s = "Name".ljust(20)+"CPU Time".ljust(15) + \
-            "CPU mem".ljust(15)+"Input Shapes"
-        for evt in Profiler.get_top_level_evts(self.events):
+            "CPU mem".ljust(15)+"FLOPs".ljust(15)+"Input Shapes"
+        for evt in self.events:
             evt: FunctionEvent
-            s += f"\n{evt.name}".ljust(20)+f"{evt.cpu_time_total_str}".ljust(
-                15)+f"{evt.cpu_memory_usage//1024}KB".ljust(15)+f"{evt.input_shapes}"
+            if evt.cpu_parent is None:
+                s += f"\n{evt.name}".ljust(20)+f"{evt.cpu_time_total_str}".ljust(
+                    15)+f"{evt.cpu_memory_usage//1024}KB".ljust(15)+f'{self_flops(evt)}'.ljust(15)+f"{evt.input_shapes}"
         return s
 
     def print_meta(self):
         print(f"cpu time: {self.cpu_time_total}ms\nmax mem usage: {self.max_memory_usage}KB\ntotal mem read: {self.total_read}KB\ntotal mem write: {self.total_write}KB\ntotal flops: {self.total_flops}")
 
 
-def prof(layer_type, data, num_threads=1):
-    basic_coeff = {
-        MlpBlock: 4.1,
-        Linear: 4.,
-        LinearGeneral: 3.95,
-        SelfAttention: 3.4,
-        EncoderBlock: 3.54
-    }
-    b = 2.5
-    var = 0.7
+class ModuleProfiler(EventAnalyser):
+    def __init__(self, module:nn.Module, x, num_threads=1, **kwargs) -> None:
+        self.num_threads = num_threads
+        torch.set_num_threads(num_threads)
 
+        self.module = module
+        self.x = x
+        self.kwargs = kwargs
+        super().__init__(self.__profile())
+
+    def __profile(self):
+        layer = self.module
+        x = self.x
+
+        with torch.no_grad():
+            layer.eval()
+            with torch.autograd.profiler.profile(with_flops=True, profile_memory=True, record_shapes=True) as prof:
+                layer(x, **self.kwargs)
+        events: EventList = prof.function_events  # type: ignore
+        return events
+
+
+class Profiler(ModuleProfiler):
+    def __init__(self, layer_type, hparams, x_shape, num_threads=1, **kwargs) -> None:
+        self.num_threads = num_threads
+        torch.set_num_threads(num_threads)
+
+        self.kwargs = kwargs
+        self.layer_type = layer_type
+        self.hparams = hparams
+        self.x_shape = x_shape
+
+        layer = self.layer_type(**self.hparams).eval()
+        x = torch.randn(*self.x_shape)
+
+        super().__init__(layer, x, num_threads, **kwargs)
+
+    @property
+    def energy_consumption(self):
+        basic_coeff = {
+            MlpBlock: 4.1,
+            Linear: 4.,
+            LinearGeneral: 3.95,
+            SelfAttention: 3.4,
+            EncoderBlock: 3.54
+        }
+        b = 2.5
+        var = 0.
+        coeff = 5.
+        if self.layer_type in basic_coeff:
+            coeff = basic_coeff[self.layer_type]  # type: ignore
+        return self.cpu_time_total * (coeff-b-var*np.random.randn())
+
+
+def prof(layer_type, data, num_threads=1):
     label = {}
     for idx in tqdm(data, desc="profile"):
         hparam = data[idx]['hparams']
@@ -172,10 +185,8 @@ def prof(layer_type, data, num_threads=1):
         kwargs = {'dims': ([2], [0])} if layer_type is LinearGeneral else {}
         prof = Profiler(layer_type, hparam, in_dim,
                         num_threads=num_threads, **kwargs)
-        e = prof.cpu_time_total * \
-            (basic_coeff[layer_type] + var * abs(np.random.randn()))
         label[idx] = {'time': prof.cpu_time_total, 'mem': prof.max_memory_usage, 'read': prof.total_read,
-                      'write': prof.total_write, 'flops': prof.total_flops, 'emem': prof.estimate_memory_usage, 'e': e}
+                      'write': prof.total_write, 'flops': prof.total_flops, 'emem': prof.estimate_memory_usage, 'e': prof.energy_consumption}
     return label
 
 
@@ -388,10 +399,152 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
     return result
 
 
-if __name__ == '__main__':
-    types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
-    aliases = ('LinearGeneral', 'Linear', 'MSA', 'FFN', 'Encoder')
-    result = main(types, aliases, metrics=('lat', 'e'),
-                  data_save_dir='tmp', plt_save_dir='plt', no_regenerate=True)
+def min_max_policy_consum(coeff_lat, coeff_e, num_encoders, min_heads, max_heads, min_b, max_b, a_b):
+    assert len(coeff_lat) == 3
+    _r, _w, _f = coeff_lat
 
-    json.dump(result, open('result.json', 'w'), indent=2)
+    (m_r, m_w, m_f), m_ir, m_w = encoder_summary(197, 768, min_heads, 3078, 64, a_b, w_b=[min_b]*4)
+
+    min_lat = (m_r * _r + m_w * _w + m_f * _f) * num_encoders
+    min_e = coeff_e * min_lat *num_encoders
+    min_w = m_w * num_encoders
+    min_mem = m_w * num_encoders + m_ir
+    (m_r, m_w, m_f), m_ir, m_w = encoder_summary(197, 768, max_heads, 3078, 64, a_b, w_b=[max_b]*4)
+
+    max_lat = (m_r * _r + m_w * _w + m_f * _f) * num_encoders
+    max_e = coeff_e * min_lat *num_encoders
+    max_w = m_w * num_encoders
+    max_mem = m_w * num_encoders + m_ir
+
+    return (min_lat, min_e, min_mem, min_w), (max_lat, max_e, max_mem, max_w)
+
+
+def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union[int, list]=32):
+    '''
+    (r, w, flops), mem, w_size\n
+    return in KB = 1000 Byte = 1024 * 8 bit\n
+    fp32 = 4Byte, 1 Byte = 8 bit
+    '''
+    matrix_size = seq_len**2 * heads
+    in_size = seq_len * in_dim
+    seq_heads_size = seq_len * heads * head_dim
+    mlp_w_size = mlp_dim * in_dim
+    lg_w_size = in_dim * heads * head_dim
+    msa_max_mem = seq_heads_size * 4 + matrix_size + in_size*2
+    ffn_max_mem = in_size + mlp_dim * seq_len * 2
+    max_mem = (max(ffn_max_mem, msa_max_mem) + in_size) * a_b // 8 //1024
+
+    def encoder_weight():
+        wbs = []
+        if isinstance(w_b, int):
+            wbs = [w_b] * 4
+        else:
+            wbs = w_b
+        assert len(wbs) == 4
+        weight_size = 0
+        weight_size += lg_w_size * 3 * wbs[0]
+        weight_size += lg_w_size * wbs[1]
+        weight_size += mlp_w_size * wbs[2]
+        weight_size += mlp_w_size * wbs[3]
+        return weight_size //8 // 1024
+
+    def encoder_runtime():
+        read = write = flops = 0
+        # layer norm
+        read += in_dim * seq_len + in_dim * 2
+        write += in_dim * seq_len
+        flops += 0
+
+        # msa in: linear general * 3
+        for _ in range(3):
+            #            x                        w                         x                  b
+            read += in_dim * seq_len + in_dim * heads * head_dim
+            #              matmul             add
+            write += seq_heads_size
+            #                       matmul                           add
+            flops += in_dim * seq_len * heads * head_dim * 2
+
+            read  += seq_heads_size +  heads * head_dim
+            write +=  heads * head_dim * seq_len
+            flops +=   heads * head_dim * seq_len
+
+
+
+        # reshape, transpose
+        read += seq_len * heads * head_dim * 4
+
+        # q * k
+        read += seq_len * heads * head_dim * 2
+        flops += 2 * seq_len * seq_len * heads * head_dim
+        write += seq_len * seq_len * heads
+
+
+        #scale, softmax
+        read += seq_len * seq_len * heads
+        write += seq_len * seq_len * heads
+
+        read += seq_len ** 2 * heads
+        write += seq_len ** 2 * heads
+
+        # s * v
+        read += seq_len**2 * heads + heads*seq_len*head_dim
+        flops += 2 * seq_len * seq_len * heads * head_dim
+        write += seq_len * heads * head_dim
+        
+        read += heads*head_dim*seq_len
+        
+        # msa out: linear general
+        read += heads * head_dim * in_dim + heads *seq_len*head_dim + in_dim * seq_len + in_dim
+        write += in_size + in_size
+        flops += in_dim * seq_len * heads * head_dim * 2 + in_dim * seq_len
+
+        #####################################
+        # add_, layernorm
+        read += in_size * 2 + in_size + in_dim * 2
+        write += in_size
+        # mlp fc1
+        read += in_size + mlp_w_size + mlp_dim
+        write += seq_len * mlp_dim
+        flops += mlp_w_size * seq_len * 2
+        #gelu
+        read += mlp_dim * seq_len
+        write += seq_len * mlp_dim
+        read += mlp_dim * seq_len
+        # mlp fc2
+        read += mlp_w_size + mlp_dim*seq_len + in_dim
+        flops += mlp_w_size * seq_len * 2
+        write += in_size
+        # add_
+        read += in_size * 2
+
+        return read * a_b // 8 //1024, write * a_b // 8 //1024, flops
+
+    return encoder_runtime(), max_mem, encoder_weight()
+
+if __name__ == '__main__':
+    # types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
+    # aliases = ('LinearGeneral', 'Linear', 'MSA', 'FFN', 'Encoder')
+    # result = main(types, aliases, metrics=('lat', 'e'),
+    #               data_save_dir='tmp', plt_save_dir='plt', no_regenerate=False)
+
+    # json.dump(result, open('result.json', 'w'), indent=2)
+    # in_dim = 768
+    # mlp_dim = 3078
+    # head_dim = 64
+    # x = torch.randn(1, 197, 768)
+    # encoder1 = EncoderBlock(in_dim, mlp_dim, num_heads=6, head_dim=head_dim)
+    # encoder2 = EncoderBlock(in_dim, mlp_dim, num_heads=12, head_dim=head_dim)
+    # mp1 = ModuleProfiler(encoder1, x)
+    # mp2 = ModuleProfiler(encoder2, x)
+    # print(mp2.cpu_time_total)
+    coeff_lat = [
+      -0.0007415096412637279,
+      0.005590396846728316,
+      3.352617495357331e-08
+    ]
+    coeff_e = 1.0399999999770126
+    rs = min_max_policy_consum(coeff_lat, coeff_e, 12, 3, 12, 4, 8, 32)
+
+    for r in rs:
+        lat, e, mem, w = r
+        print(f'lat: {lat/1000}s, e: {e/1000}J, mem: {mem/1000}MB, weight size: {w/1000}MB')
