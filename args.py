@@ -116,11 +116,7 @@ ENV = {
     "max_heads": 12,
     "min_heads": 3,
     'head_dim': 64,
-<<<<<<< HEAD
     'device': "npu"
-=======
-    'device': "cpu"
->>>>>>> master
 }
 
 
@@ -134,9 +130,5 @@ AGENT = {
     'warmup': 20,
     'init_delta': 0.5,
     'delta_decay': 0.999,
-<<<<<<< HEAD
     'device': "npu"
-=======
-    'device': "cpu"
->>>>>>> master
 }

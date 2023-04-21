@@ -11,13 +11,10 @@ import numpy as np
 import args
 from copy import deepcopy
 from mmsa import *
-<<<<<<< HEAD
 import logging
 
 logging.basicConfig(filename='rl_log.log', filemode="w", format="%(asctime)s %(name)s:%(levelname)s:%(message)s", datefmt="%d-%M-%Y %H:%M:%S", level=logging.DEBUG)
 logger = logging.getLogger()
-=======
->>>>>>> master
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
 
@@ -27,45 +24,10 @@ class Stage(Enum):
     Prune = 1
 
 
-<<<<<<< HEAD
 class QuantPruneEnv:
     def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, state_dim=7, float_bit=8, prune_only=False) -> None:
         
         self.prune_only = prune_only
-=======
-class Strategy:
-    def __init__(self, target_len: int, val) -> None:
-        self.target_len = target_len
-        self.cur_strategy = []
-        self.fill(val)
-
-    @property
-    def strategy(self):
-        assert len(
-            self) == self.target_len, f"len: {len(self)}, target: {self.target_len}, val: {self.cur_strategy}"
-        return self.cur_strategy
-
-    def __len__(self):
-        return len(self.cur_strategy)
-
-    def set(self, idx, val):
-        self.cur_strategy[idx] = val
-
-    @property
-    def is_full(self):
-        return len(self) == self.cur_strategy
-
-    def clear(self):
-        self.cur_strategy = []
-
-    def fill(self, val):
-        self.cur_strategy += [val] * (self.target_len-len(self))
-        return self
-
-
-class Env:
-    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, state_dim=7, float_bit=8) -> None:
->>>>>>> master
         self.model = model
         self.weight_path = weight_path
         self.load_weight()
@@ -165,11 +127,8 @@ class Env:
 
         for idx, state in enumerate(fc_states):
             self._quant_states[idx] = np.array([1, idx]+state, dtype='int')
-<<<<<<< HEAD
         
         logger.info('states update')
-=======
->>>>>>> master
 
     def _apply_strategy(self):
         self._apply_prune()
@@ -219,16 +178,10 @@ class Env:
             reward = self.reward()
             done = True
 
-<<<<<<< HEAD
             s = f'{self.stage.name} finish\nprune_pi:{self.prune_strategy}\nreward: {reward}\n'
             if not self.prune_only: s += f'quant_pi:{self.quant_strategy}\n'
             info_set['info'] = s
             self._build_state()
-=======
-            info_set['info'] = f'{self.stage.name} finish\nquant_pi:{self.quant_strategy}\nprune_pi:{self.prune_strategy}\nreward: {reward}\n'
-
-
->>>>>>> master
             next_state = self.reset()
             return next_state, reward, done, info_set
 
@@ -239,10 +192,6 @@ class Env:
 
         return next_state, reward, done, info_set
 
-<<<<<<< HEAD
-=======
-
->>>>>>> master
     def _get_next_states(self, norm=False):
         if self.stage is Stage.Quant:
             return self.quant_states[self.cur_idx, :].copy() if norm else self._quant_states[self.cur_idx, :].copy()
@@ -252,11 +201,7 @@ class Env:
         if True:
             finetune(self.model, self.trainloader, self.device)
         acc = eval_model(self.model, self.testloader, self.device)
-<<<<<<< HEAD
         
-=======
-
->>>>>>> master
         return (acc - self.ori_acc) * 0.1
 
     def _adjust_strategy(self):
@@ -265,12 +210,7 @@ class Env:
     def reset(self):
         self.load_weight()
         self.cur_idx = 0
-<<<<<<< HEAD
         self.stage = Stage.Quant if self.stage is Stage.Prune and not self.prune_only else Stage.Prune
-=======
-        self.stage = Stage.Quant if self.stage is Stage.Prune else Stage.Prune
-        self._build_state()
->>>>>>> master
         return self._get_next_states()
 
     def _action_wall(self, action):
