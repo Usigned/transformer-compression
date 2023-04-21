@@ -23,7 +23,7 @@ if __name__ == '__main__':
     buffer_size = 10000
 
     env_name = 'MyEnv'
-    env = Env(get_vit(args.MQVIT), **args.ENV, log_path='env.log')
+    env = Env(get_vit(args.MQVIT), **args.ENV)
     random.seed(0)
     np.random.seed(0)
     torch.manual_seed(0)

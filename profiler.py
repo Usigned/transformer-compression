@@ -1,14 +1,12 @@
-from typing import Type, Union
+from typing import Union
 import torch
 from torch.autograd.profiler_util import FunctionEvent, EventList
 import numpy as np
-import torch.nn as nn
 from tqdm import tqdm
 from gen import gen_dataset
 import json
 import matplotlib.pyplot as plt
 import os
-from copy import deepcopy
 from model import *
 from gen import *
 
@@ -77,8 +75,8 @@ class EventAnalyser:
             evt: FunctionEvent
             if evt.cpu_parent is None:  # filter non-top-level op
                 op_dict[(evt.id, evt.name)] = {
-                    'read': int(sum([np.prod(s) for s in evt.input_shapes])),
-                    'write': evt.self_cpu_memory_usage,
+                    'read': int(sum(np.prod(s) for s in evt.input_shapes if len(s) != 0)) * 4, # type: ignore
+                    'write': evt.cpu_memory_usage,
                     'flops': self_flops(evt)
                 }
         return op_dict
@@ -105,26 +103,20 @@ class EventAnalyser:
     @property
     def total_read(self):
         return int(sum(
-            sum(np.prod(s) for s in evt.input_shapes) for evt in self.events if evt.cpu_parent is None)) // 1024
+            sum(np.prod(s) for s in evt.input_shapes if len(s) != 0) for evt in self.events if evt.cpu_parent is None)) * 4 // 1024 # type: ignore
 
     @property
     def total_write(self):
-        l = {evt.name: evt.cpu_memory_usage for evt in self.events if evt.cpu_parent is None and evt.cpu_memory_usage > 0}
-
-        for k in l:
-            if 'linear' in k:
-                l[k] = l[k] * 2
-
-        return sum(l.values()) // 1024
+        return sum(evt.cpu_memory_usage for evt in self.events if evt.cpu_parent is None and evt.cpu_memory_usage > 0) // 1024
 
     def __repr__(self):
         s = "Name".ljust(20)+"CPU Time".ljust(15) + \
-            "CPU mem".ljust(15)+"Input Shapes"
+            "CPU mem".ljust(15)+"FLOPs".ljust(15)+"Input Shapes"
         for evt in self.events:
             evt: FunctionEvent
             if evt.cpu_parent is None:
                 s += f"\n{evt.name}".ljust(20)+f"{evt.cpu_time_total_str}".ljust(
-                    15)+f"{evt.cpu_memory_usage//1024}KB".ljust(15)+f"{evt.input_shapes}"
+                    15)+f"{evt.cpu_memory_usage//1024}KB".ljust(15)+f'{self_flops(evt)}'.ljust(15)+f"{evt.input_shapes}"
         return s
 
     def print_meta(self):
@@ -132,7 +124,7 @@ class EventAnalyser:
 
 
 class ModuleProfiler(EventAnalyser):
-    def __init__(self, module, x, num_threads=1, **kwargs) -> None:
+    def __init__(self, module:nn.Module, x, num_threads=1, **kwargs) -> None:
         self.num_threads = num_threads
         torch.set_num_threads(num_threads)
 
@@ -146,6 +138,7 @@ class ModuleProfiler(EventAnalyser):
         x = self.x
 
         with torch.no_grad():
+            layer.eval()
             with torch.autograd.profiler.profile(with_flops=True, profile_memory=True, record_shapes=True) as prof:
                 layer(x, **self.kwargs)
         events: EventList = prof.function_events  # type: ignore
@@ -406,10 +399,107 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
     return result
 
 
-if __name__ == '__main__':
-    types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
-    aliases = ('LinearGeneral', 'Linear', 'MSA', 'FFN', 'Encoder')
-    result = main(types, aliases, metrics=('lat', 'e'),
-                  data_save_dir='tmp', plt_save_dir='plt', no_regenerate=False)
 
-    json.dump(result, open('result.json', 'w'), indent=2)
+def min_max_policy_consump(coeff_lat, coeff_e, prune_s_len, min_heads, max_heads, quant_s_len, min_b, max_b):
+    assert len(coeff_lat) == 3
+    _r, _w, _f = coeff_lat
+
+
+def encoder_read_write_flops(seq_len, in_dim, heads, mlp_dim, head_dim, prec=32):
+    '''
+    fp32 = 4Byte, 1 Byte = 8 bit
+    '''
+    prec = prec // 8 # count on Bytes
+    read = write = flops = 0
+    
+    matrix_size = seq_len**2 * heads
+    in_size = seq_len * in_dim
+    seq_heads_size = seq_len * heads * head_dim
+    mlp_w_size = mlp_dim * in_dim
+
+    # layer norm
+    read += in_dim * seq_len + in_dim * 2
+    write += in_dim * seq_len
+    flops += 0
+
+
+    # msa in: linear general * 3
+    for _ in range(3):
+        #            x                        w                         x                  b
+        read += in_dim * seq_len + in_dim * heads * head_dim
+        #              matmul             add
+        write += seq_heads_size
+        #                       matmul                           add
+        flops += in_dim * seq_len * heads * head_dim * 2
+
+        read  += seq_heads_size +  heads * head_dim
+        write +=  heads * head_dim * seq_len
+        flops +=   heads * head_dim * seq_len
+    
+    # reshape, transpose
+    read += seq_len * heads * head_dim * 4
+
+    # q * k
+    read += seq_len * heads * head_dim * 2
+    flops += 2 * seq_len * seq_len * heads * head_dim
+    write += seq_len * seq_len * heads
+
+    #scale, softmax
+    read += seq_len * seq_len * heads
+    write += seq_len * seq_len * heads
+
+    read += seq_len ** 2 * heads
+    write += seq_len ** 2 * heads
+
+    # s * v
+    read += seq_len**2 * heads + heads*seq_len*head_dim
+    flops += 2 * seq_len * seq_len * heads * head_dim
+    write += seq_len * heads * head_dim
+    
+
+    read += heads*head_dim*seq_len
+    
+
+    # msa out: linear general
+    read += heads * head_dim * in_dim + heads *seq_len*head_dim + in_dim * seq_len + in_dim
+    write += in_size + in_size
+    flops += in_dim * seq_len * heads * head_dim * 2 + in_dim * seq_len
+    #####################################
+    # add_, layernorm
+    read += in_size * 2 + in_size + in_dim * 2
+    write += in_size
+    # mlp fc1
+    read += in_size + mlp_w_size + mlp_dim
+    write += seq_len * mlp_dim
+    flops += mlp_w_size * seq_len * 2
+    #gelu
+    read += mlp_dim * seq_len
+    write += seq_len * mlp_dim
+    read += mlp_dim * seq_len
+    # mlp fc2
+    read += mlp_w_size + mlp_dim*seq_len + in_dim
+    flops += mlp_w_size * seq_len * 2
+    write += in_size
+    # add_
+    read += in_size * 2
+
+    return read * prec //1024, write * prec//1024, flops
+
+if __name__ == '__main__':
+    # types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
+    # aliases = ('LinearGeneral', 'Linear', 'MSA', 'FFN', 'Encoder')
+    # result = main(types, aliases, metrics=('lat', 'e'),
+    #               data_save_dir='tmp', plt_save_dir='plt', no_regenerate=False)
+
+    # json.dump(result, open('result.json', 'w'), indent=2)
+    in_dim = 768
+    mlp_dim = 3078
+    head_dim = 64
+    x = torch.randn(1, 197, 768)
+    encoder1 = EncoderBlock(in_dim, mlp_dim, num_heads=6, head_dim=head_dim)
+    encoder2 = EncoderBlock(in_dim, mlp_dim, num_heads=10, head_dim=head_dim)
+    mp1 = ModuleProfiler(encoder1, x)
+    mp2 = ModuleProfiler(encoder2, x)
+
+    print(encoder_read_write_flops(197, in_dim, 10, mlp_dim, 64))
+    print(mp2.total_read, mp2.total_write, mp2.total_flops)
