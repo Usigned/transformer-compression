@@ -15,15 +15,6 @@ from gen import *
 GiGa = 1024 * 1024 * 1024
 
 
-def show_top_evt(layer_type):
-    t = layer_type
-    prof = Profiler(t, *random_generate_hparams_and_x_shape(t))
-    # for evt in Profiler.get_top_level_evts(prof.events):
-    #     print(evt.name, evt.cpu_memory_usage)
-    print(Profiler.get_top_level_evts(prof.events).table(
-        top_level_events_only=True))  # type: ignore
-
-
 def self_flops(evt: FunctionEvent):
     flops = evt.flops
     for child in evt.cpu_children:
@@ -33,103 +24,9 @@ def self_flops(evt: FunctionEvent):
     return flops
 
 
-class SampleEncoder(nn.Module):
-    def __init__(self, msa:SelfAttention, mlp:MlpBlock, in_dim) -> None:
-        super().__init__()
-        self.attn = msa
-        self.norm1 = nn.LayerNorm(768)
-        self.mlp = mlp
-        self.norm2 = nn.LayerNorm(768)
-
-    def forward(self, x):
-        residual = x
-        out = self.norm1(x)
-        out = self.attn(out)
-        out += residual
-        residual = out
-        out = self.norm2(out)
-        out = self.mlp(out)
-        out += residual
-        return out
-
-class SampleSelfAttention(nn.Module):
-    def __init__(self, q, k, v, out):
-        super().__init__()
-        self.query = q
-        self.key = k
-        self.value = v
-        self.out = out
-
-    def forward(self, x):
-        b, n, _ = x.shape
-
-        q = self.query(x, dims=([2], [0]))  # b,n,heads,head_dim
-        k = self.key(x, dims=([2], [0]))
-        v = self.value(x, dims=([2], [0]))
-
-        q = q.permute(0, 2, 1, 3)
-        k = k.permute(0, 2, 1, 3)
-        v = v.permute(0, 2, 1, 3)  # b,heads,n,head_dim
-
-        attn_weights = torch.matmul(q, k.transpose(-2, -1)) / self.scale
-        attn_weights = F.softmax(attn_weights, dim=-1)  # b,heads,n,n
-        out = torch.matmul(attn_weights, v)  # b, heads, n, head_dim
-        out = out.permute(0, 2, 1, 3)  # b, n, heads, head_dim
-        out = self.out(out, dims=([2, 3], [0, 1]))
-        return out
-
-class SampleMlpBlock(nn.Module):
-    """ Transformer Feed-Forward Block """
-
-    def __init__(self, fc1:Linear, fc2:Linear):
-        super().__init__()
-        # init layers
-        self.fc1 = fc1
-        self.fc2 = fc2
-        self.act = nn.GELU()
-
-    def forward(self, x):
-        out = self.fc1(x)
-        out = self.act(out)
-        out = self.fc2(out)
-        return out
-
-
-
-def prune_heper(prune_strategy, quant_strategy):
-    for heads in prune_strategy:
-        hparams = {
-            "in_dim": 768,
-            "mlp_dim": 3078,
-            "num_heads": heads,
-            "attn_dropout_rate": 0.,
-            "head_dim": 64
-        }
-        prof = Profiler(Encoder, hparams, (1,3,768))
-        lat = prof.cpu_time_total
-        e = 3.54 * lat
-        mem = prof.estimate_memory_usage / 8 *
-
-
-
-class Profiler:
-    def __init__(self, layer_type, hparams, x_shape, num_threads=1, **kwargs) -> None:
-        self.num_threads = num_threads
-        torch.set_num_threads(num_threads)
-
-        self.kwargs = kwargs
-        self.layer_type = layer_type
-        self.hparams = hparams
-        self.x_shape = x_shape
-        self.events: EventList = self.__profile()
-
-    def __profile(self):
-        layer = self.layer_type(**self.hparams).eval()
-        x = torch.randn(*self.x_shape)
-
-        with torch.autograd.profiler.profile(with_flops=True, profile_memory=True, record_shapes=True) as prof:
-            layer(x, **self.kwargs)
-        return prof.function_events
+class EventAnalyser:
+    def __init__(self, events: EventList) -> None:
+        self.events = events
 
     @property
     def cpu_time_total(self):
@@ -223,27 +120,71 @@ class Profiler:
     def __repr__(self):
         s = "Name".ljust(20)+"CPU Time".ljust(15) + \
             "CPU mem".ljust(15)+"Input Shapes"
-        for evt in Profiler.get_top_level_evts(self.events):
+        for evt in self.events:
             evt: FunctionEvent
-            s += f"\n{evt.name}".ljust(20)+f"{evt.cpu_time_total_str}".ljust(
-                15)+f"{evt.cpu_memory_usage//1024}KB".ljust(15)+f"{evt.input_shapes}"
+            if evt.cpu_parent is None:
+                s += f"\n{evt.name}".ljust(20)+f"{evt.cpu_time_total_str}".ljust(
+                    15)+f"{evt.cpu_memory_usage//1024}KB".ljust(15)+f"{evt.input_shapes}"
         return s
 
     def print_meta(self):
         print(f"cpu time: {self.cpu_time_total}ms\nmax mem usage: {self.max_memory_usage}KB\ntotal mem read: {self.total_read}KB\ntotal mem write: {self.total_write}KB\ntotal flops: {self.total_flops}")
 
 
-def prof(layer_type, data, num_threads=1):
-    basic_coeff = {
-        MlpBlock: 4.1,
-        Linear: 4.,
-        LinearGeneral: 3.95,
-        SelfAttention: 3.4,
-        EncoderBlock: 3.54
-    }
-    b = 2.5
-    var = 0.7
+class ModuleProfiler(EventAnalyser):
+    def __init__(self, module, x, num_threads=1, **kwargs) -> None:
+        self.num_threads = num_threads
+        torch.set_num_threads(num_threads)
 
+        self.module = module
+        self.x = x
+        self.kwargs = kwargs
+        super().__init__(self.__profile())
+
+    def __profile(self):
+        layer = self.module
+        x = self.x
+
+        with torch.no_grad():
+            with torch.autograd.profiler.profile(with_flops=True, profile_memory=True, record_shapes=True) as prof:
+                layer(x, **self.kwargs)
+        events: EventList = prof.function_events  # type: ignore
+        return events
+
+
+class Profiler(ModuleProfiler):
+    def __init__(self, layer_type, hparams, x_shape, num_threads=1, **kwargs) -> None:
+        self.num_threads = num_threads
+        torch.set_num_threads(num_threads)
+
+        self.kwargs = kwargs
+        self.layer_type = layer_type
+        self.hparams = hparams
+        self.x_shape = x_shape
+
+        layer = self.layer_type(**self.hparams).eval()
+        x = torch.randn(*self.x_shape)
+
+        super().__init__(layer, x, num_threads, **kwargs)
+
+    @property
+    def energy_consumption(self):
+        basic_coeff = {
+            MlpBlock: 4.1,
+            Linear: 4.,
+            LinearGeneral: 3.95,
+            SelfAttention: 3.4,
+            EncoderBlock: 3.54
+        }
+        b = 2.5
+        var = 0.
+        coeff = 5.
+        if self.layer_type in basic_coeff:
+            coeff = basic_coeff[self.layer_type]  # type: ignore
+        return self.cpu_time_total * (coeff-b-var*np.random.randn())
+
+
+def prof(layer_type, data, num_threads=1):
     label = {}
     for idx in tqdm(data, desc="profile"):
         hparam = data[idx]['hparams']
@@ -251,10 +192,8 @@ def prof(layer_type, data, num_threads=1):
         kwargs = {'dims': ([2], [0])} if layer_type is LinearGeneral else {}
         prof = Profiler(layer_type, hparam, in_dim,
                         num_threads=num_threads, **kwargs)
-        e = prof.cpu_time_total * \
-            (basic_coeff[layer_type] + var * abs(np.random.randn()))
         label[idx] = {'time': prof.cpu_time_total, 'mem': prof.max_memory_usage, 'read': prof.total_read,
-                      'write': prof.total_write, 'flops': prof.total_flops, 'emem': prof.estimate_memory_usage, 'e': e}
+                      'write': prof.total_write, 'flops': prof.total_flops, 'emem': prof.estimate_memory_usage, 'e': prof.energy_consumption}
     return label
 
 
@@ -471,6 +410,6 @@ if __name__ == '__main__':
     types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
     aliases = ('LinearGeneral', 'Linear', 'MSA', 'FFN', 'Encoder')
     result = main(types, aliases, metrics=('lat', 'e'),
-                  data_save_dir='tmp', plt_save_dir='plt', no_regenerate=True)
+                  data_save_dir='tmp', plt_save_dir='plt', no_regenerate=False)
 
     json.dump(result, open('result.json', 'w'), indent=2)
