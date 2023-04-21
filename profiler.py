@@ -521,6 +521,13 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
 
     return encoder_runtime(), max_mem, encoder_weight()
 
+def estimate_encoder_lat_e(coeff_lat, coeff_e, r, w, flops):
+    assert len(coeff_lat) == 3
+    lat = r * coeff_lat[0] + w*coeff_lat[1] +flops*coeff_lat[2]
+    e = lat * coeff_e
+    return lat, e 
+
+
 if __name__ == '__main__':
     # types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
     # aliases = ('LinearGeneral', 'Linear', 'MSA', 'FFN', 'Encoder')

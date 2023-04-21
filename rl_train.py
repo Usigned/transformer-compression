@@ -5,7 +5,6 @@ import random
 import numpy as np
 import rl_utils
 import args
-import memory
 
 if __name__ == '__main__':
     import wandb
@@ -40,6 +39,6 @@ if __name__ == '__main__':
     
     agent = ddpg.DDPG(state_dim, hidden_dim, action_dim, action_bound, sigma, actor_lr, critic_lr, tau, gamma, warmup=warmup_turns, init_delta=init_delta, delta_decay=delta_decay, device=device)
 
-    return_list, r, p, c_r, c_p = rl_utils.train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size)
-    print(r, p)
-    print(c_r, c_p)
+    # return_list, r, p, c_r, c_p = rl_utils.train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size)
+    # print(r, p)
+    # print(c_r, c_p)
