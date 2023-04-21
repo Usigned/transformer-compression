@@ -349,12 +349,11 @@ class QuantPruneEnv:
         return self.prune_states[self.cur_idx, :].copy() if norm else self._prune_states[self.cur_idx, :].copy()
 
     def reward(self):
-        # if True:
-        #     finetune(self.model, self.trainloader, self.device)
-        # acc = eval_model(self.model, self.testloader, self.device)
-        
-        # return (acc - self.ori_acc) * 0.1
-        return 0.
+        if True:
+            finetune(self.model, self.trainloader, self.device)
+        acc = eval_model(self.model, self.testloader, self.device)
+        logger.info(f'{self.strategy} has acc {acc}')
+        return (acc - self.ori_acc) * 0.1
 
     def _adjust_strategy(self):
         self.__resource_assertion()

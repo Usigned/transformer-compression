@@ -112,8 +112,7 @@ ENV = {
     "a_bit": 8,
     "max_heads": 12,
     "min_heads": 3,
-    'head_dim': 64,
-    'device': "cpu"
+    'head_dim': 64
 }
 
 
@@ -127,7 +126,6 @@ AGENT = {
     'warmup': 20,
     'init_delta': 0.5,
     'delta_decay': 0.999,
-    'device': "cpu"
 }
 
 COEF_LAT = [-0.0007415096412637279, 0.005590396846728316, 3.352617495357331e-08]
