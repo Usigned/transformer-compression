@@ -24,39 +24,10 @@ class Stage(Enum):
     Prune = 1
 
 
-class Strategy:
-    def __init__(self, target_len: int, val) -> None:
-        self.target_len = target_len
-        self.cur_strategy = []
-        self.fill(val)
-
-    @property
-    def strategy(self):
-        assert len(
-            self) == self.target_len, f"len: {len(self)}, target: {self.target_len}, val: {self.cur_strategy}"
-        return self.cur_strategy
-
-    def __len__(self):
-        return len(self.cur_strategy)
-
-    def set(self, idx, val):
-        self.cur_strategy[idx] = val
-
-    @property
-    def is_full(self):
-        return len(self) == self.cur_strategy
-
-    def clear(self):
-        self.cur_strategy = []
-
-    def fill(self, val):
-        self.cur_strategy += [val] * (self.target_len-len(self))
-        return self
-
-
-class Env:
-    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, state_dim=7, float_bit=8) -> None:
+class QuantPruneEnv:
+    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, state_dim=7, float_bit=8, prune_only=False) -> None:
         
+        self.prune_only = prune_only
         self.model = model
         self.weight_path = weight_path
         self.load_weight()
@@ -161,7 +132,8 @@ class Env:
 
     def _apply_strategy(self):
         self._apply_prune()
-        self._apply_quant()
+        if not self.prune_only:
+            self._apply_quant()
 
     @property
     def _prune_idx_strategy(self):
@@ -206,8 +178,9 @@ class Env:
             reward = self.reward()
             done = True
 
-            info_set['info'] = f'{self.stage.name} finish\nquant_pi:{self.quant_strategy}\nprune_pi:{self.prune_strategy}\nreward: {reward}\n'
-
+            s = f'{self.stage.name} finish\nprune_pi:{self.prune_strategy}\nreward: {reward}\n'
+            if not self.prune_only: s += f'quant_pi:{self.quant_strategy}\n'
+            info_set['info'] = s
             self._build_state()
             next_state = self.reset()
             return next_state, reward, done, info_set
@@ -219,32 +192,6 @@ class Env:
 
         return next_state, reward, done, info_set
 
-    def __update_states(self):
-        pass
-        # method, idx, num_heads, in_dim, out_dim, prec1, prec2
-        # 0        1    2           3      4        5      6
-
-        #  0     1     2     3
-        #  l --  l --  l --  l
-        # msa - msa - mlp -mlp
-        # update states according to strategy
-        # for idx, b in enumerate(self.quant_strategy.strategy):
-        #     self._quant_states[idx][-1] = b
-        #     self._quant_states[idx][-2] = b
-        #     # update prune state
-        #     fc_idx = idx % 4
-        #     if fc_idx in [0, 1]:
-        #         msa_idx = idx // 4
-        #         self._prune_states[msa_idx][fc_idx-2] = b
-
-        # for idx, heads in enumerate(self.prune_strategy.strategy):
-        #     # update prune state
-        #     self._prune_states[idx][2] = heads
-        #     # update quant state
-        #     fc_idxs = [idx*4, idx*4+1]
-        #     self._quant_states[fc_idxs[0]][4] = self.head_dim * heads
-        #     self._quant_states[fc_idxs[1]][3] = self.head_dim * heads
-
     def _get_next_states(self, norm=False):
         if self.stage is Stage.Quant:
             return self.quant_states[self.cur_idx, :].copy() if norm else self._quant_states[self.cur_idx, :].copy()
@@ -254,8 +201,6 @@ class Env:
         if True:
             finetune(self.model, self.trainloader, self.device)
         acc = eval_model(self.model, self.testloader, self.device)
-
-        logger.warning(f'{self.strategy} has acc {acc}')
         
         return (acc - self.ori_acc) * 0.1
 
@@ -265,7 +210,7 @@ class Env:
     def reset(self):
         self.load_weight()
         self.cur_idx = 0
-        self.stage = Stage.Quant if self.stage is Stage.Prune else Stage.Prune
+        self.stage = Stage.Quant if self.stage is Stage.Prune and not self.prune_only else Stage.Prune
         return self._get_next_states()
 
     def _action_wall(self, action):
@@ -359,7 +304,10 @@ class Env:
 
     @property
     def strategy(self):
-        return self.prune_strategy.tolist() + self.quant_strategy.tolist()
+        l = self.prune_strategy.tolist()
+        if not self.prune_only:
+            l += self.quant_strategy.tolist()
+        return l
 
 
 class DemoStepEnv:

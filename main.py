@@ -9,7 +9,7 @@ import rl_utils
 import args
 from model import get_vit
 
-from env import Env
+from env import QuantPruneEnv
 from ddpg import DDPG
 
 if __name__ == '__main__':
