@@ -12,6 +12,8 @@ import numpy as np
 import args
 from copy import deepcopy
 from mmsa import *
+from _cache import StrategyCache
+
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
 
@@ -191,6 +193,9 @@ class QuantPruneEnv:
         self.mem_b = mem_b
         self.__init_resource_computation()
 
+        self.cache_f = '/home/ma-user/work/design-code/strategy.csv'
+        self.cache = StrategyCache(len(self.strategy), self.cache_f)
+
     def __init_resource_computation(self):
         self.coeff_lat = args.COEF_LAT
         self.coeff_e = args.COEF_E
@@ -280,6 +285,14 @@ class QuantPruneEnv:
         if not self.prune_only:
             self._apply_quant()
 
+    def mem(self, strategy):
+        strategy = tuple(strategy)
+        if strategy not in self.cache:
+            finetune(self.model, self.trainloader, self.device)
+            acc = eval_model(self.model, self.testloader, self.device)
+            self.cache[strategy] = acc
+        return self.cache[strategy]
+
     @property
     def _prune_idx_strategy(self):
         prune_idx = []
@@ -343,14 +356,7 @@ class QuantPruneEnv:
         return self.prune_states[self.cur_idx, :].copy() if norm else self._prune_states[self.cur_idx, :].copy()
 
     def reward(self):
-        if True:
-            finetune(self.model, self.trainloader, self.device)
-        with open('strategy.his', 'a+') as f:
-            acc = eval_model(self.model, self.testloader, self.device)
-            f.write(f'{self.strategy} has acc {acc}\n')
-            f.flush()
-
-        return (acc - self.ori_acc) * 0.1
+        return (self.mem(self.strategy) -  self.ori_acc) * 0.1
 
     def _adjust_strategy(self):
         self.__resource_assertion()
@@ -370,7 +376,7 @@ class QuantPruneEnv:
                 if self._resource_bound_statisfied(): return
             idx -= 1
             if idx < 0: 
-                idx = len(self.quant_strategy)-1
+                idx = prune_len + quant_len - 1
 
     def _estimate_strategy(self):
         return QuantPruneEnv.estimate_strategy(self.quant_strategy, self.prune_strategy, self.coeff_lat, self.coeff_e, self.a_bit)

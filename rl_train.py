@@ -12,7 +12,7 @@ if __name__ == '__main__':
     # wandb.init()
     
     vit_path = r'/home/ma-user/work/Vision-Transformer-ViT/output/mvit/pat-0.5.pt'
-    num_episodes = 1000
+    num_episodes = 20000
     buffer_size = 10000
     minimal_size = 1000
     batch_size = 64
