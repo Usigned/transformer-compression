@@ -15,9 +15,9 @@ if __name__ == '__main__':
     num_episodes = 20000
     buffer_size = 10000
     minimal_size = 1000
-    batch_size = 64
-    warmup_turns = 20
+    batch_size = 128
     device = 'npu'
+    warmup = 50
 
     lat_b = 1000 #ms
     e_b = 1000 #mj
@@ -36,6 +36,6 @@ if __name__ == '__main__':
     action_dim = 1
     action_bound = 1  # 动作最大值
     
-    agent = ddpg.DDPG(state_dim, action_dim=action_dim, **args.AGENT, device=device)
+    agent = ddpg.DDPG(state_dim, action_dim=action_dim, **args.AGENT, device=device, warmup=warmup)
 
     return_list, r, p, c_r, c_p = rl_utils.train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size)

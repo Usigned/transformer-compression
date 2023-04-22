@@ -330,7 +330,10 @@ class QuantPruneEnv:
         info_set = {'info': f"{self.stage.name} take action {action}"}
 
         if self._is_batch_end():
+            
+            print(f'pre adjust: {self.strategy}')
             self._adjust_strategy()
+            print(f'post adjust: {self.strategy}')
 
             self._apply_strategy()
             reward = self.reward()

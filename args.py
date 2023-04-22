@@ -123,7 +123,6 @@ AGENT = {
     'actor_lr': 3e-4,
     'critic_lr': 3e-3,
     'tau': 5e-3,
-    'warmup': 20,
     'init_delta': 0.5,
     'delta_decay': 0.999,
 }

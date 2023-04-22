@@ -66,6 +66,8 @@ class DDPG:
 
 
     def _take_action(self, state, episode):
+        if episode < self.warmup:
+            return np.random.uniform(self.lbound, self.rbound, self.action_dim)
         state = torch.tensor([state], dtype=torch.float).to(self.device)
         action = self.actor(state).item()
         delta = self.init_delta * (self.delta_decay ** (episode - self.warmup))
