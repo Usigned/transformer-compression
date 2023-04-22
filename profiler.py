@@ -1,14 +1,18 @@
+import math
 from typing import Union
 import torch
 from torch.autograd.profiler_util import FunctionEvent, EventList
 import numpy as np
 from tqdm import tqdm
+import args
 from gen import gen_dataset
 import json
 import matplotlib.pyplot as plt
 import os
 from model import *
 from gen import *
+import scipy
+
 
 GiGa = 1024 * 1024 * 1024
 
@@ -33,6 +37,11 @@ class EventAnalyser:
         1 s = 1e3 ms = 1e6 us
         '''
         return sum([evt.cpu_time_total for evt in self.events]) / 1e3
+
+    @property
+    def estimate_energy(self):
+        b = 3.5 - 2.5
+        return self.cpu_time_total * b
 
     @property
     def estimate_memory_usage(self):
@@ -186,13 +195,14 @@ def prof(layer_type, data, num_threads=1):
         prof = Profiler(layer_type, hparam, in_dim,
                         num_threads=num_threads, **kwargs)
         label[idx] = {'time': prof.cpu_time_total, 'mem': prof.max_memory_usage, 'read': prof.total_read,
-                      'write': prof.total_write, 'flops': prof.total_flops, 'emem': prof.estimate_memory_usage, 'e': prof.energy_consumption}
+                      'write': prof.total_write, 'flops': prof.total_flops/1000, 'emem': prof.estimate_memory_usage, 'e': prof.energy_consumption}
     return label
 
 
 def train(x: np.ndarray, y: np.ndarray):
-    coefficients = np.linalg.lstsq(x, y, rcond=None)[0]
-    return coefficients
+    return scipy.optimize.lsq_linear(x, y, bounds=(0, math.inf)).x
+    # coefficients = np.linalg.lstsq(x, y, rcond=None)[0]
+    # return coefficients
 
 
 def pred(x: np.ndarray, coeff: np.ndarray):
@@ -398,6 +408,15 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
             result[alias].update(info)
     return result
 
+def main_wrapper():
+    result = main(
+        [Linear, LinearGeneral, EncoderBlock, SelfAttention, MlpBlock],
+        ['Linear', 'LinearGeneral', 'Encoder', 'MSA', 'FFN'],
+        data_save_dir=r'C:\Users\1\Desktop\design-code\tmp', no_regenerate=False, 
+        plt_save_dir=r'C:\Users\1\Desktop\design-code\plt'
+    )
+    json.dump(result, open('result.json', 'w'), indent=2)
+
 
 def min_max_policy_consum(coeff_lat, coeff_e, num_encoders, min_heads, max_heads, min_b, max_b, a_b):
     assert len(coeff_lat) == 3
@@ -521,30 +540,48 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
 
     return encoder_runtime(), max_mem, encoder_weight()
 
-if __name__ == '__main__':
-    # types = (LinearGeneral, Linear, SelfAttention, MlpBlock, EncoderBlock)
-    # aliases = ('LinearGeneral', 'Linear', 'MSA', 'FFN', 'Encoder')
-    # result = main(types, aliases, metrics=('lat', 'e'),
-    #               data_save_dir='tmp', plt_save_dir='plt', no_regenerate=False)
 
-    # json.dump(result, open('result.json', 'w'), indent=2)
-    # in_dim = 768
-    # mlp_dim = 3078
-    # head_dim = 64
-    # x = torch.randn(1, 197, 768)
-    # encoder1 = EncoderBlock(in_dim, mlp_dim, num_heads=6, head_dim=head_dim)
-    # encoder2 = EncoderBlock(in_dim, mlp_dim, num_heads=12, head_dim=head_dim)
-    # mp1 = ModuleProfiler(encoder1, x)
-    # mp2 = ModuleProfiler(encoder2, x)
-    # print(mp2.cpu_time_total)
+def estimate_encoder_lat_e(coeff_lat, coeff_e, r, w, flops):
+    assert len(coeff_lat) == 3
+    lat = r * coeff_lat[0] + w*coeff_lat[1] +flops*coeff_lat[2]
+    e = lat * coeff_e
+    return lat, e 
+
+def estimate_strategy(q_s, pr_s, coeff_lat, coeff_e, a_bit=8):
+    lat, e, mem = 0, 0, 0
+    i, j = 0, 0
+    _mir = 0
+    while i < len(pr_s) and j < len(q_s):
+        heads = pr_s[i]
+        wbs = q_s[j:4+j]
+        i += 1
+        j += 4
+        (r, w, flops), _mem, w_size = encoder_summary(197, 768, heads, 3078, 64, a_bit, wbs)
+        _lat, _e = estimate_encoder_lat_e(coeff_lat, coeff_e, r, w, flops)
+        lat += _lat
+        e += _e
+        mem += w_size
+        _mir = max(_mir, _mem)
+    _mir +=  197*768*4//1024
+    mem += _mir
+    return lat, e, mem, _mir/1000
+
+def estimate_vit_b():
     coeff_lat = [
       -0.0007415096412637279,
       0.005590396846728316,
       3.352617495357331e-08
     ]
     coeff_e = 1.0399999999770126
-    rs = min_max_policy_consum(coeff_lat, coeff_e, 12, 3, 12, 4, 8, 32)
+    return estimate_strategy([8]*48, [12]*12, coeff_lat, coeff_e, a_bit=8)
 
-    for r in rs:
-        lat, e, mem, w = r
-        print(f'lat: {lat/1000}s, e: {e/1000}J, mem: {mem/1000}MB, weight size: {w/1000}MB')
+
+if __name__ == '__main__':
+    # vit_b = get_vit(args.VIT)
+    # vit = vit_b.vit.transformer
+    # x = torch.randn(1, 197, 768)
+
+    # mp = ModuleProfiler(vit, x)
+    # print(mp.cpu_time_total, mp.estimate_energy, mp.max_memory_usage//1024)
+    # print(estimate_vit_b())
+    main_wrapper()

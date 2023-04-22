@@ -1,0 +1,652 @@
+{
+  "0": {
+    "hparams": {
+      "in_dim": 200,
+      "mlp_dim": 3057,
+      "num_heads": 4,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      189,
+      200
+    ]
+  },
+  "1": {
+    "hparams": {
+      "in_dim": 737,
+      "mlp_dim": 2986,
+      "num_heads": 11,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      175,
+      737
+    ]
+  },
+  "2": {
+    "hparams": {
+      "in_dim": 402,
+      "mlp_dim": 3136,
+      "num_heads": 6,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      198,
+      402
+    ]
+  },
+  "3": {
+    "hparams": {
+      "in_dim": 360,
+      "mlp_dim": 2952,
+      "num_heads": 5,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      183,
+      360
+    ]
+  },
+  "4": {
+    "hparams": {
+      "in_dim": 450,
+      "mlp_dim": 2917,
+      "num_heads": 6,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      182,
+      450
+    ]
+  },
+  "5": {
+    "hparams": {
+      "in_dim": 70,
+      "mlp_dim": 3103,
+      "num_heads": 1,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      182,
+      70
+    ]
+  },
+  "6": {
+    "hparams": {
+      "in_dim": 1035,
+      "mlp_dim": 2899,
+      "num_heads": 15,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      183,
+      1035
+    ]
+  },
+  "7": {
+    "hparams": {
+      "in_dim": 744,
+      "mlp_dim": 2890,
+      "num_heads": 12,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      197,
+      744
+    ]
+  },
+  "8": {
+    "hparams": {
+      "in_dim": 204,
+      "mlp_dim": 2994,
+      "num_heads": 4,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      190,
+      204
+    ]
+  },
+  "9": {
+    "hparams": {
+      "in_dim": 345,
+      "mlp_dim": 2927,
+      "num_heads": 5,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      186,
+      345
+    ]
+  },
+  "10": {
+    "hparams": {
+      "in_dim": 630,
+      "mlp_dim": 2939,
+      "num_heads": 10,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      190,
+      630
+    ]
+  },
+  "11": {
+    "hparams": {
+      "in_dim": 616,
+      "mlp_dim": 2879,
+      "num_heads": 11,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      183,
+      616
+    ]
+  },
+  "12": {
+    "hparams": {
+      "in_dim": 255,
+      "mlp_dim": 2769,
+      "num_heads": 5,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      175,
+      255
+    ]
+  },
+  "13": {
+    "hparams": {
+      "in_dim": 116,
+      "mlp_dim": 3112,
+      "num_heads": 2,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      197,
+      116
+    ]
+  },
+  "14": {
+    "hparams": {
+      "in_dim": 768,
+      "mlp_dim": 2946,
+      "num_heads": 12,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      198,
+      768
+    ]
+  },
+  "15": {
+    "hparams": {
+      "in_dim": 600,
+      "mlp_dim": 3058,
+      "num_heads": 8,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      189,
+      600
+    ]
+  },
+  "16": {
+    "hparams": {
+      "in_dim": 455,
+      "mlp_dim": 2849,
+      "num_heads": 7,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      175,
+      455
+    ]
+  },
+  "17": {
+    "hparams": {
+      "in_dim": 812,
+      "mlp_dim": 3137,
+      "num_heads": 14,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      187,
+      812
+    ]
+  },
+  "18": {
+    "hparams": {
+      "in_dim": 276,
+      "mlp_dim": 3002,
+      "num_heads": 4,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      189,
+      276
+    ]
+  },
+  "19": {
+    "hparams": {
+      "in_dim": 885,
+      "mlp_dim": 2979,
+      "num_heads": 15,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      184,
+      885
+    ]
+  },
+  "20": {
+    "hparams": {
+      "in_dim": 65,
+      "mlp_dim": 2858,
+      "num_heads": 1,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      176,
+      65
+    ]
+  },
+  "21": {
+    "hparams": {
+      "in_dim": 536,
+      "mlp_dim": 2768,
+      "num_heads": 8,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      200,
+      536
+    ]
+  },
+  "22": {
+    "hparams": {
+      "in_dim": 260,
+      "mlp_dim": 3084,
+      "num_heads": 5,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      176,
+      260
+    ]
+  },
+  "23": {
+    "hparams": {
+      "in_dim": 741,
+      "mlp_dim": 3138,
+      "num_heads": 13,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      194,
+      741
+    ]
+  },
+  "24": {
+    "hparams": {
+      "in_dim": 975,
+      "mlp_dim": 3090,
+      "num_heads": 15,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      178,
+      975
+    ]
+  },
+  "25": {
+    "hparams": {
+      "in_dim": 750,
+      "mlp_dim": 2882,
+      "num_heads": 15,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      179,
+      750
+    ]
+  },
+  "26": {
+    "hparams": {
+      "in_dim": 174,
+      "mlp_dim": 2833,
+      "num_heads": 3,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      183,
+      174
+    ]
+  },
+  "27": {
+    "hparams": {
+      "in_dim": 648,
+      "mlp_dim": 2889,
+      "num_heads": 12,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      178,
+      648
+    ]
+  },
+  "28": {
+    "hparams": {
+      "in_dim": 280,
+      "mlp_dim": 2986,
+      "num_heads": 4,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      178,
+      280
+    ]
+  },
+  "29": {
+    "hparams": {
+      "in_dim": 819,
+      "mlp_dim": 2967,
+      "num_heads": 13,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      188,
+      819
+    ]
+  },
+  "30": {
+    "hparams": {
+      "in_dim": 116,
+      "mlp_dim": 3062,
+      "num_heads": 2,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      196,
+      116
+    ]
+  },
+  "31": {
+    "hparams": {
+      "in_dim": 583,
+      "mlp_dim": 2994,
+      "num_heads": 11,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      190,
+      583
+    ]
+  },
+  "32": {
+    "hparams": {
+      "in_dim": 260,
+      "mlp_dim": 2958,
+      "num_heads": 5,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      199,
+      260
+    ]
+  },
+  "33": {
+    "hparams": {
+      "in_dim": 960,
+      "mlp_dim": 2921,
+      "num_heads": 15,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      191,
+      960
+    ]
+  },
+  "34": {
+    "hparams": {
+      "in_dim": 784,
+      "mlp_dim": 2848,
+      "num_heads": 14,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      182,
+      784
+    ]
+  },
+  "35": {
+    "hparams": {
+      "in_dim": 900,
+      "mlp_dim": 2947,
+      "num_heads": 15,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      177,
+      900
+    ]
+  },
+  "36": {
+    "hparams": {
+      "in_dim": 260,
+      "mlp_dim": 3099,
+      "num_heads": 4,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      176,
+      260
+    ]
+  },
+  "37": {
+    "hparams": {
+      "in_dim": 550,
+      "mlp_dim": 3124,
+      "num_heads": 10,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      196,
+      550
+    ]
+  },
+  "38": {
+    "hparams": {
+      "in_dim": 896,
+      "mlp_dim": 3018,
+      "num_heads": 14,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      186,
+      896
+    ]
+  },
+  "39": {
+    "hparams": {
+      "in_dim": 186,
+      "mlp_dim": 2868,
+      "num_heads": 3,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      188,
+      186
+    ]
+  },
+  "40": {
+    "hparams": {
+      "in_dim": 216,
+      "mlp_dim": 2950,
+      "num_heads": 4,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      183,
+      216
+    ]
+  },
+  "41": {
+    "hparams": {
+      "in_dim": 742,
+      "mlp_dim": 2911,
+      "num_heads": 14,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      194,
+      742
+    ]
+  },
+  "42": {
+    "hparams": {
+      "in_dim": 477,
+      "mlp_dim": 3077,
+      "num_heads": 9,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      179,
+      477
+    ]
+  },
+  "43": {
+    "hparams": {
+      "in_dim": 150,
+      "mlp_dim": 2953,
+      "num_heads": 3,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      185,
+      150
+    ]
+  },
+  "44": {
+    "hparams": {
+      "in_dim": 364,
+      "mlp_dim": 3098,
+      "num_heads": 7,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      189,
+      364
+    ]
+  },
+  "45": {
+    "hparams": {
+      "in_dim": 560,
+      "mlp_dim": 3094,
+      "num_heads": 8,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      177,
+      560
+    ]
+  },
+  "46": {
+    "hparams": {
+      "in_dim": 177,
+      "mlp_dim": 2876,
+      "num_heads": 3,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      200,
+      177
+    ]
+  },
+  "47": {
+    "hparams": {
+      "in_dim": 124,
+      "mlp_dim": 2914,
+      "num_heads": 2,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      197,
+      124
+    ]
+  },
+  "48": {
+    "hparams": {
+      "in_dim": 390,
+      "mlp_dim": 2847,
+      "num_heads": 6,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      186,
+      390
+    ]
+  },
+  "49": {
+    "hparams": {
+      "in_dim": 568,
+      "mlp_dim": 2947,
+      "num_heads": 8,
+      "attn_dropout_rate": 0.0
+    },
+    "x_shape": [
+      1,
+      188,
+      568
+    ]
+  }
+}
