@@ -2,7 +2,7 @@ from model import *
 from quant_utils import *
 from argparse import Namespace
 from mmsa import MaskedSelfAttention
-from data import get_cifar10_dataloader
+from data import get_cifar10_dataloader # type: ignore
 
 ALL = Namespace(
     **{
@@ -103,20 +103,16 @@ MQVIT = Namespace(
 
 
 ENV = {
-    "weight_path": r'D:\d-storage\output\vit\0.9853000044822693.pt',
+    "weight_path": r'/home/ma-user/work/Vision-Transformer-ViT/output/mvit/pat-0.5.pt',
     'trainloader': get_cifar10_dataloader(train=True),
     'testloader': get_cifar10_dataloader(train=False),
     "ori_acc": 0.9853000044822693,
-    "lat_b": 1000.,
-    "e_b": 1000.,
-    "mem_b": 1000.,
     "max_bit": 8,
     "min_bit": 4,
     "a_bit": 8,
     "max_heads": 12,
     "min_heads": 3,
-    'head_dim': 64,
-    'device': "cpu"
+    'head_dim': 64
 }
 
 
@@ -127,8 +123,13 @@ AGENT = {
     'actor_lr': 3e-4,
     'critic_lr': 3e-3,
     'tau': 5e-3,
-    'warmup': 20,
     'init_delta': 0.5,
     'delta_decay': 0.999,
-    'device': "cpu"
 }
+
+COEF_LAT = [-0.0007415096412637279, 0.005590396846728316, 3.352617495357331e-08]
+
+COEF_E = 1.0399999999770126
+
+# 0.94ms, 0.978j, 48.9MB
+__possible_bound_lat_e_m = 940.6659570182138, 978.2925952773189, 48900

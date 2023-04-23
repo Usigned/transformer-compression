@@ -39,15 +39,15 @@ class QValueNet(torch.nn.Module):
         
 class DDPG:
     ''' DDPG算法 '''
-    def __init__(self, state_dim, hidden_dim, action_dim, action_bound, actor_lr, critic_lr, tau, gamma,warmup, init_delta, delta_decay, device):
+    def __init__(self, state_dim, hidden_dim, action_dim, action_bound, actor_lr, critic_lr, tau, gamma, warmup, init_delta, delta_decay, device):
         self.actor = PolicyNet(state_dim, hidden_dim, action_dim, action_bound).to(device)
         self.critic = QValueNet(state_dim, hidden_dim, action_dim).to(device)
         self.target_actor = PolicyNet(state_dim, hidden_dim, action_dim, action_bound).to(device)
         self.target_critic = QValueNet(state_dim, hidden_dim, action_dim).to(device)
         # 初始化目标价值网络并设置和价值网络相同的参数
-        self.target_critic.load_state_dict(self.critic.state_dict())
+        self.target_critic.load_state_dict(self.critic.state_dict()) # type: ignore
         # 初始化目标策略网络并设置和策略相同的参数
-        self.target_actor.load_state_dict(self.actor.state_dict())
+        self.target_actor.load_state_dict(self.actor.state_dict()) # type: ignore
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
         self.gamma = gamma
@@ -66,6 +66,8 @@ class DDPG:
 
 
     def _take_action(self, state, episode):
+        if episode < self.warmup:
+            return np.random.uniform(self.lbound, self.rbound, self.action_dim)
         state = torch.tensor([state], dtype=torch.float).to(self.device)
         action = self.actor(state).item()
         delta = self.init_delta * (self.delta_decay ** (episode - self.warmup))

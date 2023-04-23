@@ -1,5 +1,6 @@
 from collections import namedtuple
 import math
+from typing import Union
 import torch.optim as optim
 import torch
 import torch.nn as nn
@@ -9,11 +10,143 @@ from model import *
 from enum import Enum
 import numpy as np
 import args
-from data import get_cifar10_dataloader
 from copy import deepcopy
 from mmsa import *
+from _cache import StrategyCache
+
 
 State = namedtuple('State', 'method, idx, num_heads, in_dim, out_dim, prec')
+
+
+# copy from profiler, pytorch 1.81 doesn't have some neccerary imports
+def min_max_policy_consum(coeff_lat, coeff_e, num_encoders, min_heads, max_heads, min_b, max_b, a_b):
+    assert len(coeff_lat) == 3
+    _r, _w, _f = coeff_lat
+
+    (m_r, m_w, m_f), m_ir, m_w = encoder_summary(197, 768, min_heads, 3078, 64, a_b, w_b=[min_b]*4)
+
+    min_lat = (m_r * _r + m_w * _w + m_f * _f) * num_encoders
+    min_e = coeff_e * min_lat *num_encoders
+    min_w = m_w * num_encoders
+    min_mem = m_w * num_encoders + m_ir
+    (m_r, m_w, m_f), m_ir, m_w = encoder_summary(197, 768, max_heads, 3078, 64, a_b, w_b=[max_b]*4)
+
+    max_lat = (m_r * _r + m_w * _w + m_f * _f) * num_encoders
+    max_e = coeff_e * min_lat *num_encoders
+    max_w = m_w * num_encoders
+    max_mem = m_w * num_encoders + m_ir
+
+    return (min_lat, min_e, min_mem, min_w), (max_lat, max_e, max_mem, max_w)
+
+
+def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union[int, list]=32):
+    '''
+    (r, w, flops), mem, w_size\n
+    return in KB = 1000 Byte = 1024 * 8 bit\n
+    fp32 = 4Byte, 1 Byte = 8 bit
+    '''
+    matrix_size = seq_len**2 * heads
+    in_size = seq_len * in_dim
+    seq_heads_size = seq_len * heads * head_dim
+    mlp_w_size = mlp_dim * in_dim
+    lg_w_size = in_dim * heads * head_dim
+    msa_max_mem = seq_heads_size * 4 + matrix_size + in_size*2
+    ffn_max_mem = in_size + mlp_dim * seq_len * 2
+    max_mem = (max(ffn_max_mem, msa_max_mem) + in_size) * a_b // 8 //1024
+
+    def encoder_weight():
+        wbs = []
+        if isinstance(w_b, int):
+            wbs = [w_b] * 4
+        else:
+            wbs = w_b
+        assert len(wbs) == 4
+        weight_size = 0
+        weight_size += lg_w_size * 3 * wbs[0]
+        weight_size += lg_w_size * wbs[1]
+        weight_size += mlp_w_size * wbs[2]
+        weight_size += mlp_w_size * wbs[3]
+        return weight_size //8 // 1024
+
+    def encoder_runtime():
+        read = write = flops = 0
+        # layer norm
+        read += in_dim * seq_len + in_dim * 2
+        write += in_dim * seq_len
+        flops += 0
+
+        # msa in: linear general * 3
+        for _ in range(3):
+            #            x                        w                         x                  b
+            read += in_dim * seq_len + in_dim * heads * head_dim
+            #              matmul             add
+            write += seq_heads_size
+            #                       matmul                           add
+            flops += in_dim * seq_len * heads * head_dim * 2
+
+            read  += seq_heads_size +  heads * head_dim
+            write +=  heads * head_dim * seq_len
+            flops +=   heads * head_dim * seq_len
+
+
+
+        # reshape, transpose
+        read += seq_len * heads * head_dim * 4
+
+        # q * k
+        read += seq_len * heads * head_dim * 2
+        flops += 2 * seq_len * seq_len * heads * head_dim
+        write += seq_len * seq_len * heads
+
+
+        #scale, softmax
+        read += seq_len * seq_len * heads
+        write += seq_len * seq_len * heads
+
+        read += seq_len ** 2 * heads
+        write += seq_len ** 2 * heads
+
+        # s * v
+        read += seq_len**2 * heads + heads*seq_len*head_dim
+        flops += 2 * seq_len * seq_len * heads * head_dim
+        write += seq_len * heads * head_dim
+        
+        read += heads*head_dim*seq_len
+        
+        # msa out: linear general
+        read += heads * head_dim * in_dim + heads *seq_len*head_dim + in_dim * seq_len + in_dim
+        write += in_size + in_size
+        flops += in_dim * seq_len * heads * head_dim * 2 + in_dim * seq_len
+
+        #####################################
+        # add_, layernorm
+        read += in_size * 2 + in_size + in_dim * 2
+        write += in_size
+        # mlp fc1
+        read += in_size + mlp_w_size + mlp_dim
+        write += seq_len * mlp_dim
+        flops += mlp_w_size * seq_len * 2
+        #gelu
+        read += mlp_dim * seq_len
+        write += seq_len * mlp_dim
+        read += mlp_dim * seq_len
+        # mlp fc2
+        read += mlp_w_size + mlp_dim*seq_len + in_dim
+        flops += mlp_w_size * seq_len * 2
+        write += in_size
+        # add_
+        read += in_size * 2
+
+        return read * a_b // 8 //1024, write * a_b // 8 //1024, flops
+
+    return encoder_runtime(), max_mem, encoder_weight()
+
+def estimate_encoder_lat_e(coeff_lat, coeff_e, r, w, flops):
+    assert len(coeff_lat) == 3
+    lat = r * coeff_lat[0] + w*coeff_lat[1] +flops*coeff_lat[2]
+    e = lat * coeff_e
+    return lat, e 
+
 
 
 class Stage(Enum):
@@ -21,38 +154,10 @@ class Stage(Enum):
     Prune = 1
 
 
-class Strategy:
-    def __init__(self, target_len: int, val) -> None:
-        self.target_len = target_len
-        self.cur_strategy = []
-        self.fill(val)
-
-    @property
-    def strategy(self):
-        assert len(
-            self) == self.target_len, f"len: {len(self)}, target: {self.target_len}, val: {self.cur_strategy}"
-        return self.cur_strategy
-
-    def __len__(self):
-        return len(self.cur_strategy)
-
-    def set(self, idx, val):
-        self.cur_strategy[idx] = val
-
-    @property
-    def is_full(self):
-        return len(self) == self.cur_strategy
-
-    def clear(self):
-        self.cur_strategy = []
-
-    def fill(self, val):
-        self.cur_strategy += [val] * (self.target_len-len(self))
-        return self
-
-
-class Env:
-    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, state_dim=7, float_bit=8) -> None:
+class QuantPruneEnv:
+    def __init__(self, model: CAFIA_Transformer, weight_path, trainloader, testloader, lat_b, e_b, mem_b, min_bit, max_bit, a_bit, max_heads, min_heads, head_dim, ori_acc, device, state_dim=7, float_bit=8, prune_only=False) -> None:
+        
+        self.prune_only = prune_only
         self.model = model
         self.weight_path = weight_path
         self.load_weight()
@@ -60,11 +165,6 @@ class Env:
 
         self.trainloader = trainloader
         self.testloader = testloader
-
-        # resouce bound
-        self.lat_b = lat_b
-        self.e_b = e_b
-        self.mem_b = mem_b
 
         # quant bit range
         self.min_bit = min_bit
@@ -87,6 +187,33 @@ class Env:
         self.best_reward = -math.inf
         self.stage = Stage.Quant
 
+        # resouce bound
+        self.lat_b = lat_b
+        self.e_b = e_b
+        self.mem_b = mem_b
+        self.__init_resource_computation()
+
+        self.cache_f = '/home/ma-user/work/design-code/strategy.csv'
+        self.cache = StrategyCache(len(self.strategy), self.cache_f)
+
+    def __init_resource_computation(self):
+        self.coeff_lat = args.COEF_LAT
+        self.coeff_e = args.COEF_E
+        _min_resource = QuantPruneEnv.estimate_strategy(
+            [self.min_bit]*len(self.quant_strategy),
+            [self.min_heads]*len(self.prune_strategy),
+            self.coeff_lat,
+            self.coeff_e,
+            self.a_bit
+        )
+        self._possible_min_lat, self._possible_min_e, self._possible_min_mem= _min_resource
+        print(_min_resource)
+        self.__resource_assertion()
+
+    def __resource_assertion(self):
+        assert self._possible_min_lat < self.lat_b, f"{self._possible_min_lat} > {self.lat_b}"
+        assert self._possible_min_e < self.e_b, f"{self._possible_min_e} > {self.e_b}"
+        assert self._possible_min_mem < self.mem_b, f"{self._possible_min_mem} > {self.mem_b}"
 
     def init_env(self):
         self.quant_idxs, quant_idx = [], []
@@ -155,7 +282,16 @@ class Env:
 
     def _apply_strategy(self):
         self._apply_prune()
-        self._apply_quant()
+        if not self.prune_only:
+            self._apply_quant()
+
+    def mem(self, strategy):
+        strategy = tuple(strategy)
+        if strategy not in self.cache:
+            finetune(self.model, self.trainloader, self.device)
+            acc = eval_model(self.model, self.testloader, self.device)
+            self.cache[strategy] = acc
+        return self.cache[strategy]
 
     @property
     def _prune_idx_strategy(self):
@@ -194,15 +330,19 @@ class Env:
         info_set = {'info': f"{self.stage.name} take action {action}"}
 
         if self._is_batch_end():
+            
+            print(f'pre adjust: {self.strategy}')
             self._adjust_strategy()
+            print(f'post adjust: {self.strategy}')
 
             self._apply_strategy()
             reward = self.reward()
             done = True
 
-            info_set['info'] = f'{self.stage.name} finish\nquant_pi:{self.quant_strategy}\nprune_pi:{self.prune_strategy}\nreward: {reward}\n'
-
-
+            s = f'{self.stage.name} finish\nprune_pi:{self.prune_strategy}\nreward: {reward}\n'
+            if not self.prune_only: s += f'quant_pi:{self.quant_strategy}\n'
+            info_set['info'] = s
+            self._build_state()
             next_state = self.reset()
             return next_state, reward, done, info_set
 
@@ -213,27 +353,65 @@ class Env:
 
         return next_state, reward, done, info_set
 
-
     def _get_next_states(self, norm=False):
         if self.stage is Stage.Quant:
             return self.quant_states[self.cur_idx, :].copy() if norm else self._quant_states[self.cur_idx, :].copy()
         return self.prune_states[self.cur_idx, :].copy() if norm else self._prune_states[self.cur_idx, :].copy()
 
     def reward(self):
-        if True:
-            finetune(self.model, self.trainloader, self.device)
-        acc = eval_model(self.model, self.testloader, self.device)
-
-        return (acc - self.ori_acc) * 0.1
+        return (self.mem(self.strategy) -  self.ori_acc) * 0.1
 
     def _adjust_strategy(self):
-        pass
+        self.__resource_assertion()
+        prune_len = len(self.prune_strategy)
+        quant_len = len(self.quant_strategy)
+        idx= prune_len + quant_len - 1
+        while not self._resource_bound_statisfied():
+            if idx > prune_len-1:
+                i = idx-prune_len
+                if self.quant_strategy[i] > self.min_bit:
+                    self.quant_strategy[i] -= 1
+                if self._resource_bound_statisfied(): return
+            else:
+                j = idx
+                if self.prune_strategy[j] > self.min_heads:
+                    self.prune_strategy[j] -= 1
+                if self._resource_bound_statisfied(): return
+            idx -= 1
+            if idx < 0: 
+                idx = prune_len + quant_len - 1
+
+    def _estimate_strategy(self):
+        return QuantPruneEnv.estimate_strategy(self.quant_strategy, self.prune_strategy, self.coeff_lat, self.coeff_e, self.a_bit)
+
+    @staticmethod
+    def estimate_strategy(q_s, pr_s, coeff_lat, coeff_e, a_bit=8):
+        lat, e, mem = 0, 0, 0
+        i, j = 0, 0
+        _mir = 0
+        while i < len(pr_s) and j < len(q_s):
+            heads = pr_s[i]
+            wbs = q_s[j:4+j]
+            i += 1
+            j += 4
+            (r, w, flops), _mem, w_size = encoder_summary(197, 768, heads, 3078, 64, a_bit, wbs)
+            _lat, _e = estimate_encoder_lat_e(coeff_lat, coeff_e, r, w, flops)
+            lat += _lat
+            e += _e
+            mem += w_size
+            _mir = max(_mir, _mem)
+        _mir +=  197*768*4//1024
+        mem += _mir
+        return lat, e, mem
+
+    def _resource_bound_statisfied(self):
+        lat, e, mem = self._estimate_strategy()
+        return lat < self.lat_b and e < self.e_b and self.mem_b > mem
 
     def reset(self):
         self.load_weight()
         self.cur_idx = 0
-        self.stage = Stage.Quant if self.stage is Stage.Prune else Stage.Prune
-        self._build_state()
+        self.stage = Stage.Quant if self.stage is Stage.Prune and not self.prune_only else Stage.Prune
         return self._get_next_states()
 
     def _action_wall(self, action):
@@ -327,7 +505,10 @@ class Env:
 
     @property
     def strategy(self):
-        return self.prune_strategy.tolist() + self.quant_strategy.tolist()
+        l = self.prune_strategy.tolist()
+        if not self.prune_only:
+            l += self.quant_strategy.tolist()
+        return l
 
 
 class DemoStepEnv:
@@ -366,8 +547,7 @@ class DemoStepEnv:
 
     def reward(self):
         target = np.array(self.target, dtype='float')
-        # type: ignore
-        return -sum(abs(np.array(self.list, dtype='float') - target)) / self.len
+        return -sum(abs(np.array(self.list, dtype='float') - target)) / self.len  # type: ignore
 
     def is_final(self):
         return self.cur_idx == self.len-1
