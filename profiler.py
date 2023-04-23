@@ -27,9 +27,9 @@ def self_flops(evt: FunctionEvent):
 
 
 class EventAnalyser:
-    def __init__(self, events: EventList) -> None:
+    def __init__(self, events: EventList, coeff_e=1.) -> None:
         self.events = events
-        self.e_coeff = 1.0
+        self.e_coeff = coeff_e
 
     @property
     def cpu_time_total(self):
@@ -179,7 +179,7 @@ class Profiler(ModuleProfiler):
             EncoderBlock: 3.54
         }
         b = 2.5
-        var = 0.
+        var = 0.1
         coeff = 5.
         if self.layer_type in basic_coeff:
             coeff = basic_coeff[self.layer_type]  # type: ignore
@@ -405,6 +405,18 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
             info, coeff_e[alias] = eval_e(
                 alias, coeff_lat[alias], coeff_e[alias] if alias in coeff_e else None)
             result[alias].update(info)
+    
+    avg_keys = [
+        'train_lat_mape',
+        'test_lat_mape',
+        'train_e_mape',
+        'test_e_mape'
+    ]
+    avg = {
+        k: (sum(result[alias][k] for alias in result)/len(result)) for k in avg_keys
+    }
+    
+    result['avg'] = avg
     return result
 
 
@@ -416,8 +428,14 @@ def main_wrapper():
         plt_save_dir=r'C:\Users\1\Desktop\design-code\plt'
     )
     for k in result:
-        lat = result[k]['coeff_lat']
-        result[k]['coeff_lat'] = ["%.4e" % l for l in lat]
+        if 'coeff_lat' in result[k]:
+            lat = result[k]['coeff_lat']
+            result[k]['coeff_lat'] = ["%.4e" % l for l in lat]
+    
+    for k in result['avg']:
+        r = result['avg'][k]
+        result['avg'][k] = "%.2f" % r
+
     json.dump(result, open('result.json', 'w'), indent=2)
 
 
@@ -590,5 +608,5 @@ if __name__ == '__main__':
     # mp = ModuleProfiler(vit, x)
     # print(mp.cpu_time_total, mp.estimate_energy, mp.max_memory_usage//1024)
     # print(estimate_vit_b())
-    # main_wrapper()
-    print(scipy.__version__)
+    main_wrapper()
+    # print(scipy.__version__)
