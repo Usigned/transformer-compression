@@ -29,6 +29,7 @@ def self_flops(evt: FunctionEvent):
 class EventAnalyser:
     def __init__(self, events: EventList) -> None:
         self.events = events
+        self.e_coeff = 1.0
 
     @property
     def cpu_time_total(self):
@@ -40,8 +41,7 @@ class EventAnalyser:
 
     @property
     def estimate_energy(self):
-        b = 3.5 - 2.5
-        return self.cpu_time_total * b
+        return self.cpu_time_total * self.e_coeff
 
     @property
     def estimate_memory_usage(self):
@@ -112,7 +112,7 @@ class EventAnalyser:
     @property
     def total_read(self):
         return int(sum(
-            sum(np.prod(s) for s in evt.input_shapes if len(s) != 0) for evt in self.events if evt.cpu_parent is None)) * 4 // 1024 # type: ignore
+            sum(np.prod(s) for s in evt.input_shapes if len(s) != 0) for evt in self.events if evt.cpu_parent is None)) * 4 // 1024  # type: ignore
 
     @property
     def total_write(self):
@@ -133,7 +133,7 @@ class EventAnalyser:
 
 
 class ModuleProfiler(EventAnalyser):
-    def __init__(self, module:nn.Module, x, num_threads=1, **kwargs) -> None:
+    def __init__(self, module: nn.Module, x, num_threads=1, **kwargs) -> None:
         self.num_threads = num_threads
         torch.set_num_threads(num_threads)
 
@@ -200,9 +200,8 @@ def prof(layer_type, data, num_threads=1):
 
 
 def train(x: np.ndarray, y: np.ndarray):
-    return scipy.optimize.lsq_linear(x, y, bounds=(0, math.inf)).x
-    # coefficients = np.linalg.lstsq(x, y, rcond=None)[0]
-    # return coefficients
+    coeff: np.ndarray = scipy.optimize.lsq_linear(x, y, bounds=(0, math.inf)).x
+    return coeff
 
 
 def pred(x: np.ndarray, coeff: np.ndarray):
@@ -408,13 +407,17 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
             result[alias].update(info)
     return result
 
+
 def main_wrapper():
     result = main(
         [Linear, LinearGeneral, EncoderBlock, SelfAttention, MlpBlock],
         ['Linear', 'LinearGeneral', 'Encoder', 'MSA', 'FFN'],
-        data_save_dir=r'C:\Users\1\Desktop\design-code\tmp', no_regenerate=False, 
+        data_save_dir=r'C:\Users\1\Desktop\design-code\tmp', no_regenerate=True,
         plt_save_dir=r'C:\Users\1\Desktop\design-code\plt'
     )
+    for k in result:
+        lat = result[k]['coeff_lat']
+        result[k]['coeff_lat'] = ["%.4e" % l for l in lat]
     json.dump(result, open('result.json', 'w'), indent=2)
 
 
@@ -422,23 +425,25 @@ def min_max_policy_consum(coeff_lat, coeff_e, num_encoders, min_heads, max_heads
     assert len(coeff_lat) == 3
     _r, _w, _f = coeff_lat
 
-    (m_r, m_w, m_f), m_ir, m_w = encoder_summary(197, 768, min_heads, 3078, 64, a_b, w_b=[min_b]*4)
+    (m_r, m_w, m_f), m_ir, m_w = encoder_summary(
+        197, 768, min_heads, 3078, 64, a_b, w_b=[min_b]*4)
 
     min_lat = (m_r * _r + m_w * _w + m_f * _f) * num_encoders
-    min_e = coeff_e * min_lat *num_encoders
+    min_e = coeff_e * min_lat * num_encoders
     min_w = m_w * num_encoders
     min_mem = m_w * num_encoders + m_ir
-    (m_r, m_w, m_f), m_ir, m_w = encoder_summary(197, 768, max_heads, 3078, 64, a_b, w_b=[max_b]*4)
+    (m_r, m_w, m_f), m_ir, m_w = encoder_summary(
+        197, 768, max_heads, 3078, 64, a_b, w_b=[max_b]*4)
 
     max_lat = (m_r * _r + m_w * _w + m_f * _f) * num_encoders
-    max_e = coeff_e * min_lat *num_encoders
+    max_e = coeff_e * min_lat * num_encoders
     max_w = m_w * num_encoders
     max_mem = m_w * num_encoders + m_ir
 
     return (min_lat, min_e, min_mem, min_w), (max_lat, max_e, max_mem, max_w)
 
 
-def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union[int, list]=32):
+def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b: Union[int, list] = 32):
     '''
     (r, w, flops), mem, w_size\n
     return in KB = 1000 Byte = 1024 * 8 bit\n
@@ -451,7 +456,7 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
     lg_w_size = in_dim * heads * head_dim
     msa_max_mem = seq_heads_size * 4 + matrix_size + in_size*2
     ffn_max_mem = in_size + mlp_dim * seq_len * 2
-    max_mem = (max(ffn_max_mem, msa_max_mem) + in_size) * a_b // 8 //1024
+    max_mem = (max(ffn_max_mem, msa_max_mem) + in_size) * a_b // 8 // 1024
 
     def encoder_weight():
         wbs = []
@@ -465,7 +470,7 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
         weight_size += lg_w_size * wbs[1]
         weight_size += mlp_w_size * wbs[2]
         weight_size += mlp_w_size * wbs[3]
-        return weight_size //8 // 1024
+        return weight_size // 8 // 1024
 
     def encoder_runtime():
         read = write = flops = 0
@@ -483,11 +488,9 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
             #                       matmul                           add
             flops += in_dim * seq_len * heads * head_dim * 2
 
-            read  += seq_heads_size +  heads * head_dim
-            write +=  heads * head_dim * seq_len
-            flops +=   heads * head_dim * seq_len
-
-
+            read += seq_heads_size + heads * head_dim
+            write += heads * head_dim * seq_len
+            flops += heads * head_dim * seq_len
 
         # reshape, transpose
         read += seq_len * heads * head_dim * 4
@@ -497,8 +500,7 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
         flops += 2 * seq_len * seq_len * heads * head_dim
         write += seq_len * seq_len * heads
 
-
-        #scale, softmax
+        # scale, softmax
         read += seq_len * seq_len * heads
         write += seq_len * seq_len * heads
 
@@ -509,11 +511,12 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
         read += seq_len**2 * heads + heads*seq_len*head_dim
         flops += 2 * seq_len * seq_len * heads * head_dim
         write += seq_len * heads * head_dim
-        
+
         read += heads*head_dim*seq_len
-        
+
         # msa out: linear general
-        read += heads * head_dim * in_dim + heads *seq_len*head_dim + in_dim * seq_len + in_dim
+        read += heads * head_dim * in_dim + heads * \
+            seq_len*head_dim + in_dim * seq_len + in_dim
         write += in_size + in_size
         flops += in_dim * seq_len * heads * head_dim * 2 + in_dim * seq_len
 
@@ -525,7 +528,7 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
         read += in_size + mlp_w_size + mlp_dim
         write += seq_len * mlp_dim
         flops += mlp_w_size * seq_len * 2
-        #gelu
+        # gelu
         read += mlp_dim * seq_len
         write += seq_len * mlp_dim
         read += mlp_dim * seq_len
@@ -536,16 +539,17 @@ def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b:Union
         # add_
         read += in_size * 2
 
-        return read * a_b // 8 //1024, write * a_b // 8 //1024, flops
+        return read * a_b // 8 // 1024, write * a_b // 8 // 1024, flops
 
     return encoder_runtime(), max_mem, encoder_weight()
 
 
 def estimate_encoder_lat_e(coeff_lat, coeff_e, r, w, flops):
     assert len(coeff_lat) == 3
-    lat = r * coeff_lat[0] + w*coeff_lat[1] +flops*coeff_lat[2]
+    lat = r * coeff_lat[0] + w*coeff_lat[1] + flops*coeff_lat[2]
     e = lat * coeff_e
-    return lat, e 
+    return lat, e
+
 
 def estimate_strategy(q_s, pr_s, coeff_lat, coeff_e, a_bit=8):
     lat, e, mem = 0, 0, 0
@@ -556,21 +560,23 @@ def estimate_strategy(q_s, pr_s, coeff_lat, coeff_e, a_bit=8):
         wbs = q_s[j:4+j]
         i += 1
         j += 4
-        (r, w, flops), _mem, w_size = encoder_summary(197, 768, heads, 3078, 64, a_bit, wbs)
+        (r, w, flops), _mem, w_size = encoder_summary(
+            197, 768, heads, 3078, 64, a_bit, wbs)
         _lat, _e = estimate_encoder_lat_e(coeff_lat, coeff_e, r, w, flops)
         lat += _lat
         e += _e
         mem += w_size
         _mir = max(_mir, _mem)
-    _mir +=  197*768*4//1024
+    _mir += 197*768*4//1024
     mem += _mir
     return lat, e, mem, _mir/1000
 
+
 def estimate_vit_b():
     coeff_lat = [
-      -0.0007415096412637279,
-      0.005590396846728316,
-      3.352617495357331e-08
+        -0.0007415096412637279,
+        0.005590396846728316,
+        3.352617495357331e-08
     ]
     coeff_e = 1.0399999999770126
     return estimate_strategy([8]*48, [12]*12, coeff_lat, coeff_e, a_bit=8)
@@ -584,4 +590,5 @@ if __name__ == '__main__':
     # mp = ModuleProfiler(vit, x)
     # print(mp.cpu_time_total, mp.estimate_energy, mp.max_memory_usage//1024)
     # print(estimate_vit_b())
-    main_wrapper()
+    # main_wrapper()
+    print(scipy.__version__)
