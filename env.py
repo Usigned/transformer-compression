@@ -193,7 +193,8 @@ class QuantPruneEnv:
         self.mem_b = mem_b
         self.__init_resource_computation()
 
-        self.cache_f = '/home/ma-user/work/design-code/strategy.csv'
+        # self.cache_f = '/home/ma-user/work/design-code/strategy.csv'
+        self.cache_f = None
         self.cache = StrategyCache(len(self.strategy), self.cache_f)
 
     def __init_resource_computation(self):
@@ -366,17 +367,17 @@ class QuantPruneEnv:
         prune_len = len(self.prune_strategy)
         quant_len = len(self.quant_strategy)
         idx= prune_len + quant_len - 1
-        while not self._resource_bound_statisfied():
+        while not self.resource_bound_statisfied():
             if idx > prune_len-1:
                 i = idx-prune_len
                 if self.quant_strategy[i] > self.min_bit:
                     self.quant_strategy[i] -= 1
-                if self._resource_bound_statisfied(): return
+                if self.resource_bound_statisfied(): return
             else:
                 j = idx
                 if self.prune_strategy[j] > self.min_heads:
                     self.prune_strategy[j] -= 1
-                if self._resource_bound_statisfied(): return
+                if self.resource_bound_statisfied(): return
             idx -= 1
             if idx < 0: 
                 idx = prune_len + quant_len - 1
@@ -404,9 +405,12 @@ class QuantPruneEnv:
         mem += _mir
         return lat, e, mem
 
-    def _resource_bound_statisfied(self):
-        lat, e, mem = self._estimate_strategy()
+    def _resource_bound_statisfied(self, q_s, pr_s):
+        lat, e, mem = self.estimate_strategy(q_s, pr_s, self.coeff_lat, self.coeff_e, self.a_bit)
         return lat < self.lat_b and e < self.e_b and self.mem_b > mem
+
+    def resource_bound_statisfied(self):
+        return self._resource_bound_statisfied(self.quant_strategy, self.prune_strategy)
 
     def reset(self):
         self.load_weight()

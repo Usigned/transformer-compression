@@ -103,7 +103,8 @@ MQVIT = Namespace(
 
 
 ENV = {
-    "weight_path": r'/home/ma-user/work/Vision-Transformer-ViT/output/mvit/pat-0.5.pt',
+    # "weight_path": r'/home/ma-user/work/Vision-Transformer-ViT/output/mvit/pat-0.5.pt',
+    "weight_path": r'D:\d-storage\output\pat-0.5.pt',
     'trainloader': get_cifar10_dataloader(train=True),
     'testloader': get_cifar10_dataloader(train=False),
     "ori_acc": 0.9853000044822693,
