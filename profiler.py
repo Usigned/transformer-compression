@@ -464,7 +464,7 @@ def min_max_policy_consum(coeff_lat, coeff_e, num_encoders, min_heads, max_heads
 def encoder_summary(seq_len, in_dim, heads, mlp_dim, head_dim, a_b=32, w_b: Union[int, list] = 32):
     '''
     (r, w, flops), mem, w_size\n
-    return in KB = 1000 Byte = 1024 * 8 bit\n
+    return in KB = 1000 Byte = 1024 * 8 bit, kflops\n
     fp32 = 4Byte, 1 Byte = 8 bit
     '''
     matrix_size = seq_len**2 * heads
@@ -608,5 +608,7 @@ if __name__ == '__main__':
     # mp = ModuleProfiler(vit, x)
     # print(mp.cpu_time_total, mp.estimate_energy, mp.max_memory_usage//1024)
     # print(estimate_vit_b())
-    main_wrapper()
+    # main_wrapper()
     # print(scipy.__version__)
+    print(estimate_vit_b())
+    
