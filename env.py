@@ -365,21 +365,24 @@ class QuantPruneEnv:
         self.__resource_assertion()
         prune_len = len(self.prune_strategy)
         quant_len = len(self.quant_strategy)
-        idx= prune_len + quant_len - 1
+        i = prune_len - 1
+        j = quant_len - 1
         while not self._resource_bound_statisfied():
-            if idx > prune_len-1:
-                i = idx-prune_len
-                if self.quant_strategy[i] > self.min_bit:
-                    self.quant_strategy[i] -= 1
-                if self._resource_bound_statisfied(): return
-            else:
-                j = idx
-                if self.prune_strategy[j] > self.min_heads:
-                    self.prune_strategy[j] -= 1
-                if self._resource_bound_statisfied(): return
-            idx -= 1
-            if idx < 0: 
-                idx = prune_len + quant_len - 1
+            if self.prune_strategy[i] > self.min_heads:
+                self.prune_strategy[i] -= 1
+            if self._resource_bound_statisfied(): return
+            
+            i -= 1
+            if i < 0: 
+                i = prune_len - 1
+
+            if self.quant_strategy[j] > self.min_bit:
+                self.quant_strategy[j] -= 1
+            if self._resource_bound_statisfied(): return
+
+            j -= 1
+            if j < 0: 
+                j = quant_len - 1
 
     def _estimate_strategy(self):
         return QuantPruneEnv.estimate_strategy(self.quant_strategy, self.prune_strategy, self.coeff_lat, self.coeff_e, self.a_bit)
@@ -406,6 +409,9 @@ class QuantPruneEnv:
 
     def _resource_bound_statisfied(self):
         lat, e, mem = self._estimate_strategy()
+        # if lat > self.lat_b: print('lat_b not meed')
+        # if e > self.e_b: print('e_b not meed')
+        # if mem > self.mem_b: print('mem_b not meed')
         return lat < self.lat_b and e < self.e_b and self.mem_b > mem
 
     def reset(self):

@@ -8,8 +8,6 @@ import args
 from model import get_vit
 
 if __name__ == '__main__':
-    # import wandb
-    # wandb.init()
     
     vit_path = r'/home/ma-user/work/Vision-Transformer-ViT/output/mvit/pat-0.5.pt'
     num_episodes = 20000

@@ -4,8 +4,7 @@ import numpy as np
 import torch
 import collections
 import random
-import ddpg, ddpg
-
+import ddpg
 
 class ReplayBuffer:
     def __init__(self, capacity):
@@ -34,7 +33,8 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
 
     f = open('rl_log.csv', 'w')
 
-    def log(*msg):
+
+    def file_log(*msg):
         s = ','.join(str(m) for m in msg) + '\n'
         f.write(s)
         f.flush()
@@ -71,7 +71,7 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
 
                 return_list.append(episode_return)
                 
-                log(f'{i*10+i_episode}', f'{episode_return}')
+                file_log(f'{i*10+i_episode}', f'{episode_return}')
 
                 if (i_episode+1) % 10 == 0:
                     pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
