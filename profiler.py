@@ -255,13 +255,15 @@ def test_e(label, coeff_lat, coeff_e=None):
 
 def plt_fig(y_fit, y_data, title, save_path, format='pdf', x_label='Measured', y_label='Predicted'):
     plt.rcParams['font.sans-serif'] = 'times new roman'
-    plt.figure()
+    plt.figure(figsize=(16, 12))
     # plt.title(title)
     plt.plot([min(y_data), max(y_data)], [
              min(y_data), max(y_data)], '--', color='gray')
     plt.scatter(y_data, y_fit)
-    plt.xlabel(x_label, fontsize=25)
-    plt.ylabel(y_label, fontsize=25)
+    plt.xlabel(x_label, fontsize=60)
+    plt.xticks(fontsize=30)
+    plt.ylabel(y_label, fontsize=60)
+    plt.yticks(fontsize=30)
     plt.savefig(save_path, format=format)
 
 
