@@ -259,7 +259,7 @@ def plt_fig(y_fit, y_data, title, save_path, format='pdf', x_label='Measured', y
     # plt.title(title)
     plt.plot([min(y_data), max(y_data)], [
              min(y_data), max(y_data)], '--', color='gray')
-    plt.scatter(y_data, y_fit)
+    plt.scatter(y_data, y_fit, s=20**2)
     plt.xlabel(x_label, fontsize=60)
     plt.xticks(fontsize=30)
     plt.ylabel(y_label, fontsize=60)
