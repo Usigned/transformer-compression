@@ -253,14 +253,15 @@ def test_e(label, coeff_lat, coeff_e=None):
     return test(x, y, coeff_e)
 
 
-def plt_fig(y_fit, y_data, title, save_path, format='png', x_label='Measured', y_label='Predicted'):
+def plt_fig(y_fit, y_data, title, save_path, format='pdf', x_label='Measured', y_label='Predicted'):
+    plt.rcParams['font.sans-serif'] = 'times new roman'
     plt.figure()
-    plt.title(title)
+    # plt.title(title)
     plt.plot([min(y_data), max(y_data)], [
              min(y_data), max(y_data)], '--', color='gray')
     plt.scatter(y_data, y_fit)
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
+    plt.xlabel(x_label, fontsize=25)
+    plt.ylabel(y_label, fontsize=25)
     plt.savefig(save_path, format=format)
 
 
@@ -351,7 +352,9 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
             plt_fig(
                 y_pred, y,
                 title=f'Train Set {alias} Latency(ms)',
-                save_path=os.path.join(plt_save_dir, f'{alias}-train-lat.png')
+                save_path=os.path.join(plt_save_dir, f'{alias}-train-lat.pdf'),
+                x_label='Measured (ms)',
+                y_label='Predicted (ms)'
             )
 
         if not train_only:
@@ -363,7 +366,9 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
                     y_pred, y,
                     title=f'Test Set {alias} Latency(ms)',
                     save_path=os.path.join(
-                        plt_save_dir, f'{alias}-test-lat.png')
+                        plt_save_dir, f'{alias}-test-lat.pdf'),
+                    x_label='Measured (ms)',
+                    y_label='Predicted (ms)'
                 )
         return r, cl
 
@@ -378,7 +383,9 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
             plt_fig(
                 y_pred, y,
                 title=f'Train Set {alias} Energy Consumption(mJ)',
-                save_path=os.path.join(plt_save_dir, f'{alias}-train-e.png')
+                save_path=os.path.join(plt_save_dir, f'{alias}-train-e.pdf'),
+                x_label='Measured (mJ)',
+                y_label='Predicted (mJ)'
             )
         if not train_only:
             x, y, cl, y_pred, test_mape = test_e(test_label[alias], cl, ce)
@@ -388,7 +395,9 @@ def main(types, aliases, metrics=('lat', 'e'), train_only=False, n=200, data_sav
                 plt_fig(
                     y_pred, y,
                     title=f'Test Set {alias} Energy Consumption(J)',
-                    save_path=os.path.join(plt_save_dir, f'{alias}-test-e.png')
+                    save_path=os.path.join(plt_save_dir, f'{alias}-test-e.pdf'),
+                    x_label='Measured (mJ)',
+                    y_label='Predicted (mJ)'
                 )
         return r, cl
 
@@ -608,7 +617,7 @@ if __name__ == '__main__':
     # mp = ModuleProfiler(vit, x)
     # print(mp.cpu_time_total, mp.estimate_energy, mp.max_memory_usage//1024)
     # print(estimate_vit_b())
-    # main_wrapper()
+    main_wrapper()
     # print(scipy.__version__)
-    print(estimate_vit_b())
+    # print(estimate_vit_b())
     
