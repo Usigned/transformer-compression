@@ -31,10 +31,11 @@ def moving_average(a, window_size):
 
 def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, minimal_size, batch_size):
 
-    f = open('rl_log.csv', 'w')
+    rl_f = open('rl_log.csv', 'w')
+    cl_f = open('c_loss.csv', 'w')
+    al_f = open('a_loss.csv', 'w')
 
-
-    def file_log(*msg):
+    def file_log(f, *msg):
         s = ','.join(str(m) for m in msg) + '\n'
         f.write(s)
         f.flush()
@@ -42,6 +43,9 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
     return_list = []
     best_reward = -math.inf
     best_policy = []
+
+    num_step = 0
+
     for i in range(10):
         with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
             for i_episode in range(int(num_episodes/10)):
@@ -60,6 +64,10 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
                         b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
                         transition_dict = {'states': b_s, 'actions': b_a, 'next_states': b_ns, 'rewards': b_r, 'dones': b_d}
                         c_loss, a_loss = agent.update(transition_dict)
+
+                        file_log(al_f, f'{num_step}', f'{a_loss.item()}')
+                        file_log(cl_f, f'{num_step}', f'{c_loss.item()}')
+                        num_step += 1
                 
                 final_reward = T[-1][2]
                 for state, action, reward, next_state, done in T:
@@ -71,7 +79,7 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
 
                 return_list.append(episode_return)
                 
-                file_log(f'{i*10+i_episode}', f'{episode_return}')
+                file_log(rl_f, f'{i*10+i_episode}', f'{episode_return}')
 
                 if (i_episode+1) % 10 == 0:
                     pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
