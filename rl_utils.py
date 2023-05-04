@@ -34,6 +34,7 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
     rl_f = open('rl_log.csv', 'w')
     cl_f = open('c_loss.csv', 'w')
     al_f = open('a_loss.csv', 'w')
+    pi_f = open('policy.csv', 'w')
 
     def file_log(f, *msg):
         s = ','.join(str(m) for m in msg) + '\n'
@@ -80,6 +81,7 @@ def train_off_policy_agent(env, agent:ddpg.DDPG, num_episodes, replay_buffer, mi
                 return_list.append(episode_return)
                 
                 file_log(rl_f, f'{i*10+i_episode}', f'{episode_return}')
+                file_log(pi_f, f'{i*10+i_episode}', f'{best_policy}', f'{env.strategy}')
 
                 if (i_episode+1) % 10 == 0:
                     pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})

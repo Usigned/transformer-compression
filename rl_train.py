@@ -1,4 +1,4 @@
-from env import DemoStepEnv, QuantPruneEnv
+from env import DemoStepEnv, QuantPruneEnv, CombQuantPruneEnv
 import ddpg, ddpg
 import torch
 import random
@@ -21,13 +21,27 @@ if __name__ == '__main__':
     e_b = 1000 #mj
     mem_b = 70*1024 #KB
 
+    lambda_acc = 20
+    lambda_lat = 1e-3
+    lambda_e = 1e-3
+    lambda_mem = 1e-5
+
+
     env_name = 'Quant Prune Env'
-    env = QuantPruneEnv(
-        get_vit(args.MQVIT, vit_path), **args.ENV, lat_b=lat_b, e_b=e_b, mem_b=mem_b, device=device
+    # env = QuantPruneEnv(
+    #     get_vit(args.MQVIT, vit_path), **args.ENV, lat_b=lat_b, e_b=e_b, mem_b=mem_b, device=device
+    # )
+
+
+    env = CombQuantPruneEnv(
+        get_vit(args.MQVIT, vit_path), **args.ENV, device=device, lambda_acc=lambda_acc, lambda_lat=lambda_lat, lambda_mem=lambda_mem, lambda_e=lambda_e
     )
-    random.seed(0)
-    np.random.seed(0)
-    torch.manual_seed(0)
+
+    seed = 0
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     replay_buffer = rl_utils.ReplayBuffer(buffer_size)
 
     state_dim = env.state_dim
