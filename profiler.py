@@ -179,11 +179,10 @@ class Profiler(ModuleProfiler):
             EncoderBlock: 3.54
         }
         b = 2.5
-        var = 0.1
         coeff = 5.
         if self.layer_type in basic_coeff:
             coeff = basic_coeff[self.layer_type]  # type: ignore
-        return self.cpu_time_total * (coeff-b-var*np.random.randn())
+        return self.cpu_time_total * (coeff-b)
 
 
 def prof(layer_type, data, num_threads=1):
